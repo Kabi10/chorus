@@ -13,6 +13,10 @@ from chorus.platforms.gemini import Gemini
 from chorus.platforms.chatgpt import ChatGPT
 from chorus.platforms.claude import Claude
 from chorus.platforms.perplexity import Perplexity
+from chorus.platforms.grok import Grok
+from chorus.platforms.copilot import Copilot
+from chorus.platforms.deepseek import DeepSeek
+from chorus.platforms.mistral import Mistral
 
 HTML_FILE = Path(__file__).parent / "frontend" / "index.html"
 
@@ -21,6 +25,10 @@ PLATFORMS = {
     "chatgpt":    ChatGPT,
     "claude":     Claude,
     "perplexity": Perplexity,
+    "grok":       Grok,
+    "copilot":    Copilot,
+    "deepseek":   DeepSeek,
+    "mistral":    Mistral,
 }
 
 PLATFORM_META = {
@@ -28,6 +36,10 @@ PLATFORM_META = {
     "chatgpt":    {"name": "ChatGPT",    "color": "#10a37f", "icon": "🟢"},
     "claude":     {"name": "Claude",     "color": "#d97706", "icon": "🟣"},
     "perplexity": {"name": "Perplexity", "color": "#20b8cd", "icon": "🔭"},
+    "grok":       {"name": "Grok",       "color": "#1d9bf0", "icon": "✕"},
+    "copilot":    {"name": "Copilot",    "color": "#0078d4", "icon": "🪟"},
+    "deepseek":   {"name": "DeepSeek",   "color": "#4d6bfe", "icon": "🔵"},
+    "mistral":    {"name": "Mistral",    "color": "#ff7000", "icon": "🔶"},
 }
 
 app = FastAPI(title="Chorus")
@@ -66,6 +78,22 @@ def list_platforms():
 @app.get("/api/platforms/{platform}/profiles")
 def list_profiles(platform: str):
     return browser_manager.list_profiles(platform)
+
+
+@app.post("/api/platforms/{platform}/profiles/{profile_name}")
+async def create_profile(platform: str, profile_name: str):
+    """Create a new browser profile and open the platform so user can log in."""
+    if platform not in PLATFORMS:
+        raise HTTPException(400, f"Unknown platform: {platform}")
+    try:
+        page = await browser_manager.get_page(platform, profile_name)
+        PlatformClass = PLATFORMS[platform]
+        ai = PlatformClass(page)
+        await page.goto(ai.url, wait_until="domcontentloaded", timeout=20000)
+        return {"ok": True, "profile": profile_name, "url": ai.url,
+                "message": f"Browser opened — log in to {platform} and close the tab when done."}
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 @app.post("/api/query")

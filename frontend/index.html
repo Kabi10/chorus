@@ -114,6 +114,25 @@ header .spacer{flex:1}
 .cons-agree{display:flex;gap:6px;flex-wrap:wrap}
 .agree-badge{font-size:11px;padding:2px 7px;border-radius:20px;border:1px solid var(--border);background:var(--s2);color:var(--dim)}
 
+/* ── Profile switcher ── */
+.plat-wrap{position:relative}
+.plat-acct-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--dimmer);cursor:pointer;font-size:11px;padding:2px 4px;line-height:1;border-radius:3px;transition:color .15s}
+.plat-acct-btn:hover{color:var(--dim)}
+.profile-popover{position:absolute;top:calc(100% + 4px);right:0;z-index:50;background:var(--sur);border:1px solid var(--border2);border-radius:var(--r);padding:10px;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none}
+.profile-popover.open{display:block}
+.profile-popover h4{font-size:10px;font-weight:600;color:var(--dimmer);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.profile-option{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:12px;color:var(--dim);transition:all .15s}
+.profile-option:hover{background:var(--s2);color:var(--text)}
+.profile-option.selected{color:var(--text)}
+.profile-option input[type="radio"]{accent-color:var(--accent)}
+.new-profile-btn{width:100%;margin-top:8px;padding:5px;background:var(--s2);border:1px dashed var(--border2);border-radius:5px;color:var(--dim);font-size:11px;font-family:inherit;cursor:pointer;transition:all .15s;text-align:center}
+.new-profile-btn:hover{border-color:var(--accent);color:var(--accent)}
+.new-profile-input{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:inherit;font-size:12px;padding:5px 8px;outline:none;margin-top:6px;display:none}
+.new-profile-input:focus{border-color:var(--accent)}
+
+/* ── Response diff ── */
+.diff-unique{background:#1e3a5f33;border-left:2px solid #3b82f6;padding:2px 4px;border-radius:2px}
+
 /* ── Empty / waiting ── */
 #welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--dim);gap:10px;padding:40px;text-align:center}
 #welcome h2{font-size:20px;color:var(--text);font-weight:600}
@@ -203,12 +222,9 @@ let sessionHistory = [];
 let currentResponses = {};
 let currentPrompt = '';
 
-const COLORS = {
-  gemini:     '#4285F4',
-  chatgpt:    '#10a37f',
-  claude:     '#d97706',
-  perplexity: '#20b8cd',
-};
+// profiles: {platform: selectedProfileName}
+let selectedProfiles = {};
+let platformProfiles = {}; // {platform: [profile_names]}
 
 // ── WebSocket ──────────────────────────────────────────────────────
 function connectWS(){
@@ -257,10 +273,24 @@ async function init(){
   try{
     const res = await fetch(`${API}/api/platforms`);
     platforms = await res.json();
+    // Load profiles for all platforms
+    await Promise.all(Object.keys(platforms).map(loadProfilesFor));
     renderPlatforms();
   } catch(e){ toast('Server not reachable. Is Chorus running?'); }
   connectWS();
   renderHistory();
+}
+
+async function loadProfilesFor(key){
+  try{
+    const res = await fetch(`${API}/api/platforms/${key}/profiles`);
+    const profs = await res.json();
+    platformProfiles[key] = Array.isArray(profs) ? profs : ['default'];
+    if(!selectedProfiles[key]) selectedProfiles[key] = platformProfiles[key][0] || 'default';
+  } catch(e){
+    platformProfiles[key] = ['default'];
+    selectedProfiles[key] = 'default';
+  }
 }
 
 function renderPlatforms(){
@@ -268,13 +298,91 @@ function renderPlatforms(){
   grid.innerHTML = '';
   for(const [key, p] of Object.entries(platforms)){
     selectedPlatforms.add(key);
+    const wrap = document.createElement('div');
+    wrap.className = 'plat-wrap';
+    wrap.style.position = 'relative';
+
     const btn = document.createElement('button');
     btn.className = 'plat-btn selected';
     btn.dataset.platform = key;
+    btn.style.paddingRight = '28px'; // room for settings icon
     btn.innerHTML = `<span class="plat-dot" style="background:${p.color}"></span>${p.icon} ${p.name}<span class="plat-check">✓</span>`;
     btn.onclick = () => togglePlatform(key, btn);
-    grid.appendChild(btn);
+
+    // Profile switcher button
+    const acctBtn = document.createElement('button');
+    acctBtn.className = 'plat-acct-btn';
+    acctBtn.title = `Switch account for ${p.name}`;
+    acctBtn.textContent = '⚙';
+    acctBtn.onclick = (e) => { e.stopPropagation(); toggleProfilePopover(key, acctBtn); };
+
+    // Profile popover
+    const popover = document.createElement('div');
+    popover.className = 'profile-popover';
+    popover.id = `profile-pop-${key}`;
+    renderProfilePopover(popover, key);
+
+    wrap.appendChild(btn);
+    wrap.appendChild(acctBtn);
+    wrap.appendChild(popover);
+    grid.appendChild(wrap);
   }
+
+  // Close popovers on outside click
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.profile-popover.open').forEach(p => p.classList.remove('open'));
+  });
+}
+
+function renderProfilePopover(popover, key){
+  const profs = platformProfiles[key] || ['default'];
+  const cur   = selectedProfiles[key] || 'default';
+  const p     = platforms[key];
+
+  popover.innerHTML = `<h4>${p.icon} ${p.name} accounts</h4>
+    ${profs.map(prof => `
+      <label class="profile-option ${prof===cur?'selected':''}">
+        <input type="radio" name="prof-${key}" value="${prof}" ${prof===cur?'checked':''} onchange="selectProfile('${key}','${prof}')"/>
+        ${prof}
+      </label>`).join('')}
+    <button class="new-profile-btn" onclick="showNewProfileInput('${key}')">+ Add account</button>
+    <input class="new-profile-input" id="new-prof-input-${key}" placeholder="Account name (e.g. work)"
+      onkeydown="if(event.key==='Enter')createProfile('${key}',this.value)" />`;
+}
+
+function toggleProfilePopover(key, btn){
+  const pop = document.getElementById(`profile-pop-${key}`);
+  if(!pop) return;
+  const wasOpen = pop.classList.contains('open');
+  document.querySelectorAll('.profile-popover.open').forEach(p => p.classList.remove('open'));
+  if(!wasOpen) pop.classList.add('open');
+}
+
+function selectProfile(key, prof){
+  selectedProfiles[key] = prof;
+  const pop = document.getElementById(`profile-pop-${key}`);
+  if(pop) pop.querySelectorAll('.profile-option').forEach(el => {
+    el.classList.toggle('selected', el.querySelector('input').value === prof);
+  });
+  toast(`${platforms[key]?.name}: using profile "${prof}"`);
+}
+
+function showNewProfileInput(key){
+  const inp = document.getElementById(`new-prof-input-${key}`);
+  if(inp){ inp.style.display = 'block'; inp.focus(); }
+}
+
+async function createProfile(key, name){
+  const prof = name.trim().replace(/[^a-zA-Z0-9_-]/g,'_') || 'account2';
+  try{
+    const res  = await fetch(`${API}/api/platforms/${key}/profiles/${encodeURIComponent(prof)}`,{method:'POST'});
+    const data = await res.json();
+    toast(`Opening ${platforms[key]?.name} for login — complete login then close`);
+    // Reload profiles and re-render popover
+    await loadProfilesFor(key);
+    const pop = document.getElementById(`profile-pop-${key}`);
+    if(pop) renderProfilePopover(pop, key);
+  } catch(e){ toast('Failed to create profile'); }
 }
 
 function togglePlatform(key, btn){
@@ -323,12 +431,17 @@ async function sendQuery(){
   hideResultViews();
 
   try{
+    // Build profiles dict for selected platforms only
+    const profiles = {};
+    selectedPlatforms.forEach(pk => { if(selectedProfiles[pk]) profiles[pk] = selectedProfiles[pk]; });
+
     const res = await fetch(`${API}/api/query`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         prompt,
         platforms: [...selectedPlatforms],
+        profiles,
       })
     });
     const data = await res.json();
