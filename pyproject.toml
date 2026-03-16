@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chorus"
+version = "1.0.0"
+description = "Query multiple AI platforms simultaneously"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.23.0",
+    "playwright>=1.40",
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+]
+
+[project.scripts]
+chorus = "chorus.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["chorus*"]
+
+[tool.setuptools.package-data]
+chorus = ["*.json", "frontend/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,4 +1,5 @@
 import asyncio
+import importlib.resources
 import json
 import uuid
 from datetime import datetime, timezone
@@ -20,9 +21,13 @@ from chorus.platforms.copilot import Copilot
 from chorus.platforms.deepseek import DeepSeek
 from chorus.platforms.mistral import Mistral
 
-HTML_FILE    = Path(__file__).parent / "frontend" / "index.html"
-HISTORY_FILE = Path(__file__).parent / "chorus_history.json"
+_CHORUS_DIR  = Path.home() / ".chorus"
+_CHORUS_DIR.mkdir(parents=True, exist_ok=True)
+HISTORY_FILE = _CHORUS_DIR / "chorus_history.json"
 MAX_HISTORY  = 100
+# Read HTML into memory at startup — importlib.resources returns a Traversable, not a real
+# filesystem path in installed wheels. Read content directly; never store as Path.
+_HTML_CONTENT: str = importlib.resources.files("chorus").joinpath("frontend/index.html").read_text(encoding="utf-8")
 
 PLATFORMS = {
     "gemini":     Gemini,
@@ -95,7 +100,7 @@ async def shutdown():
 
 @app.get("/", response_class=HTMLResponse)
 def root():
-    return HTML_FILE.read_text(encoding="utf-8")
+    return _HTML_CONTENT
 
 
 @app.get("/api/platforms")
