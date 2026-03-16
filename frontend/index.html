@@ -141,6 +141,25 @@ header .spacer{flex:1}
 /* scrollbar */
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
 
+/* ── Templates ── */
+.tmpl-btn{display:block;width:100%;text-align:left;padding:6px 8px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:11px;cursor:pointer;transition:all .15s;margin-bottom:4px}
+.tmpl-btn:hover{background:var(--s3);color:var(--text);border-color:var(--border2)}
+
+/* ── Diff view ── */
+#diff-view{flex:1;overflow-y:auto;padding:20px}
+.diff-hdr{display:grid;gap:14px}
+.diff-plat-hdr{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px}
+.diff-sentence{font-size:12px;line-height:1.8;padding:3px 6px;border-radius:3px;margin-bottom:2px}
+.diff-sentence.unique{background:#3b82f620;border-left:2px solid #3b82f6;padding-left:8px}
+.diff-sentence.shared{color:var(--dim)}
+
+/* ── History panel ── */
+.hist-item{padding:6px 8px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);font-size:11px;color:var(--dim);cursor:pointer;margin-bottom:4px;display:flex;align-items:center;gap:6px;transition:all .15s}
+.hist-item:hover{background:var(--s3);color:var(--text)}
+.hist-txt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-del{background:none;border:none;color:var(--dimmer);cursor:pointer;font-size:12px;padding:0 3px;line-height:1;flex-shrink:0}
+.hist-del:hover{color:var(--red)}
+
 /* ── Toast ── */
 #toast{position:fixed;bottom:16px;right:16px;background:var(--s3);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 14px;font-size:12px;z-index:200;opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none}
 #toast.show{opacity:1;transform:translateY(0)}
@@ -175,13 +194,18 @@ header .spacer{flex:1}
       <button id="send-btn" onclick="sendQuery()">⚡ Send to All AIs</button>
     </div>
 
-    <div id="progress-area" style="display:none">
+    <div id="templates-area" style="padding:0 20px 16px">
+      <h2>Templates</h2>
+      <div id="template-list"></div>
+    </div>
+
+    <div id="progress-area" style="display:none;padding:20px;border-top:1px solid var(--border)">
       <h2>Progress</h2>
       <div id="progress-cards"></div>
     </div>
 
-    <div id="history-area">
-      <h2>Recent</h2>
+    <div id="history-area" style="padding:0 20px 20px;border-top:1px solid var(--border)">
+      <h2 style="font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Recent</h2>
       <div id="history-list"></div>
     </div>
   </div>
@@ -192,6 +216,9 @@ header .spacer{flex:1}
       <button class="view-btn active" onclick="switchView('tree',this)">🌳 Tree</button>
       <button class="view-btn" onclick="switchView('cards',this)">📋 Cards</button>
       <button class="view-btn" onclick="switchView('consensus',this)">🎯 Consensus</button>
+      <button class="view-btn" onclick="switchView('diff',this)">🔍 Diff</button>
+      <div style="flex:1"></div>
+      <button id="export-btn" onclick="exportSession()" title="Download as Markdown" style="padding:5px 12px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);font-family:inherit;font-size:12px;cursor:pointer;transition:all .15s">↓ Export</button>
     </div>
 
     <div id="tree-view" style="display:none">
@@ -200,6 +227,7 @@ header .spacer{flex:1}
 
     <div id="cards-view" style="display:none"></div>
     <div id="consensus-view" style="display:none"></div>
+    <div id="diff-view" style="display:none"></div>
 
     <div id="welcome">
       <div style="font-size:48px">🎵</div>
@@ -263,8 +291,9 @@ function handleSessionComplete(msg){
   renderTree(msg.prompt, msg.responses);
   renderCards(msg.responses);
   renderConsensus(msg.prompt, msg.responses);
-  sessionHistory.unshift({prompt: msg.prompt, responses: msg.responses, id: msg.session_id});
-  renderHistory();
+  renderDiff(msg.prompt, msg.responses);
+  // History is persisted server-side; reload from server
+  await loadHistory();
   toast('All responses collected!');
 }
 
@@ -278,7 +307,8 @@ async function init(){
     renderPlatforms();
   } catch(e){ toast('Server not reachable. Is Chorus running?'); }
   connectWS();
-  renderHistory();
+  renderTemplates();
+  await loadHistory();
 }
 
 async function loadProfilesFor(key){
@@ -478,6 +508,7 @@ function showResultViews(){
   document.getElementById('tree-view').style.display='flex';
   document.getElementById('cards-view').style.display='none';
   document.getElementById('consensus-view').style.display='none';
+  document.getElementById('diff-view').style.display='none';
   document.querySelectorAll('.view-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
 }
 
@@ -486,16 +517,18 @@ function hideResultViews(){
   document.getElementById('tree-view').style.display='none';
   document.getElementById('cards-view').style.display='none';
   document.getElementById('consensus-view').style.display='none';
+  document.getElementById('diff-view').style.display='none';
   document.getElementById('welcome').style.display='flex';
 }
 
 function switchView(view, btn){
-  ['tree','cards','consensus'].forEach(v=>{
+  ['tree','cards','consensus','diff'].forEach(v=>{
     document.getElementById(`${v}-view`).style.display = v===view?(v==='tree'?'flex':'block'):'none';
   });
   document.querySelectorAll('.view-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  if(view==='tree' && Object.keys(currentResponses).length) renderTree(currentPrompt, currentResponses);
+  if(view==='tree'      && Object.keys(currentResponses).length) renderTree(currentPrompt, currentResponses);
+  if(view==='diff'      && Object.keys(currentResponses).length) renderDiff(currentPrompt, currentResponses);
 }
 
 // ── D3 Tree ────────────────────────────────────────────────────────
@@ -703,26 +736,130 @@ function renderConsensus(prompt, responses){
   view.innerHTML = html;
 }
 
+// ── Templates ──────────────────────────────────────────────────────
+const TEMPLATES = [
+  {label:'🏗️ Best features to build next',  text:'What are the 5 most impactful features I should build next for a developer project manager tool? Be specific and rank by ROI.'},
+  {label:'⚖️ Compare tech stacks',           text:'Compare React + Node.js vs Next.js vs SvelteKit + FastAPI for building a modern SaaS web app in 2025. Cover DX, performance, ecosystem, and hiring.'},
+  {label:'🔍 Code review checklist',         text:'Give me a comprehensive code review checklist for a TypeScript/Python full-stack project. Cover security, performance, maintainability, and testing.'},
+  {label:'🚀 Launch prep checklist',         text:'What are the critical steps before launching a developer tool as open source? Cover README, licensing, CI/CD, security, docs, and community.'},
+  {label:'🤖 AI integration patterns',       text:'What are the best patterns for integrating LLMs into a production application? Cover prompting, streaming, caching, fallbacks, and cost control.'},
+];
+
+function renderTemplates(){
+  const list = document.getElementById('template-list');
+  list.innerHTML = TEMPLATES.map((t,i)=>
+    `<button class="tmpl-btn" onclick="useTemplate(${i})">${t.label}</button>`
+  ).join('');
+}
+
+function useTemplate(i){
+  const t = TEMPLATES[i];
+  if(!t) return;
+  document.getElementById('prompt-input').value = t.text;
+  document.getElementById('prompt-input').focus();
+}
+
 // ── History ────────────────────────────────────────────────────────
+async function loadHistory(){
+  try{
+    const res = await fetch(`${API}/api/history?limit=20`);
+    sessionHistory = await res.json();
+    renderHistory();
+  } catch(e){ /* server may not have any yet */ }
+}
+
 function renderHistory(){
   const list = document.getElementById('history-list');
   if(!sessionHistory.length){ list.innerHTML='<div style="font-size:12px;color:var(--dimmer)">No history yet</div>'; return; }
-  list.innerHTML = sessionHistory.slice(0,8).map((s,i)=>`
-    <div class="hist-item" onclick="loadHistoryItem(${i})" title="${esc(s.prompt)}">
-      ${esc(s.prompt.slice(0,60))}${s.prompt.length>60?'…':''}
+  list.innerHTML = sessionHistory.map((s)=>`
+    <div class="hist-item" title="${esc(s.prompt)}">
+      <span class="hist-txt" onclick="loadHistoryEntry('${s.id}')">${esc(s.prompt.slice(0,55))}${s.prompt.length>55?'…':''}</span>
+      <button class="hist-del" onclick="deleteHistory('${s.id}')" title="Remove">✕</button>
     </div>`).join('');
 }
 
-function loadHistoryItem(i){
-  const s = sessionHistory[i];
+function loadHistoryEntry(id){
+  const s = sessionHistory.find(x=>x.id===id);
   if(!s) return;
   currentResponses = s.responses;
   currentPrompt    = s.prompt;
+  currentSession   = s.id;
   document.getElementById('prompt-input').value = s.prompt;
   showResultViews();
   renderTree(s.prompt, s.responses);
   renderCards(s.responses);
   renderConsensus(s.prompt, s.responses);
+  renderDiff(s.prompt, s.responses);
+}
+
+async function deleteHistory(id){
+  try{
+    await fetch(`${API}/api/history/${id}`,{method:'DELETE'});
+    sessionHistory = sessionHistory.filter(s=>s.id!==id);
+    renderHistory();
+  } catch(e){ toast('Could not delete'); }
+}
+
+// ── Diff view ──────────────────────────────────────────────────────
+function renderDiff(prompt, responses){
+  const view = document.getElementById('diff-view');
+  const keys = Object.keys(responses);
+  if(keys.length < 2){
+    view.innerHTML='<p style="color:var(--dim);padding:20px;font-size:13px">Need at least 2 responses to show differences.</p>';
+    return;
+  }
+
+  // Split each response into sentences
+  function toSentences(text){
+    return (text||'').split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(s=>s.length>20);
+  }
+
+  // For each sentence in a platform, check if similar sentence appears in others (Jaccard on words)
+  function jaccard(a, b){
+    const wa = new Set(a.toLowerCase().split(/\s+/));
+    const wb = new Set(b.toLowerCase().split(/\s+/));
+    const inter = [...wa].filter(w=>wb.has(w)).length;
+    return inter / (wa.size + wb.size - inter);
+  }
+
+  function isUnique(sentence, otherResponses){
+    return otherResponses.every(other => {
+      const sents = toSentences(other);
+      return sents.every(s => jaccard(sentence, s) < 0.35);
+    });
+  }
+
+  let html = `<div style="margin-bottom:16px;font-size:12px;color:var(--dim)">
+    <span style="background:#3b82f620;border-left:2px solid #3b82f6;padding:2px 8px;border-radius:3px;margin-right:8px">highlighted</span> = unique to this AI
+  </div><div class="diff-hdr" style="grid-template-columns:repeat(${Math.min(keys.length,3)},1fr)">`;
+
+  keys.forEach(key => {
+    const p       = platforms[key]||{name:key,color:'#888',icon:'🤖'};
+    const sents   = toSentences(responses[key]);
+    const others  = keys.filter(k=>k!==key).map(k=>responses[k]);
+    html += `<div>
+      <div class="diff-plat-hdr">
+        <span style="width:10px;height:10px;border-radius:50%;background:${p.color};display:inline-block"></span>
+        ${p.icon} ${p.name}
+      </div>
+      ${sents.map(s => {
+        const unique = isUnique(s, others);
+        return `<div class="diff-sentence ${unique?'unique':'shared'}">${esc(s)}</div>`;
+      }).join('')}
+    </div>`;
+  });
+
+  html += '</div>';
+  view.innerHTML = html;
+}
+
+// ── Export ─────────────────────────────────────────────────────────
+function exportSession(){
+  if(!currentSession){ toast('No session to export'); return; }
+  const url = `${API}/api/export/${currentSession}`;
+  const a = document.createElement('a');
+  a.href = url; a.download = `chorus-${currentSession}.md`;
+  a.click();
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
