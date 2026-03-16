@@ -1,5 +1,7 @@
 {
   "gemini": {
+    "timeout_seconds": 60,
+    "rate_limit_signals": ["You've reached your limit", "Too many requests", "quota exceeded"],
     "input": [
       "rich-textarea div[contenteditable='true']",
       "div[contenteditable='true'][aria-label*='message']",
@@ -29,6 +31,8 @@
     ]
   },
   "chatgpt": {
+    "timeout_seconds": 60,
+    "rate_limit_signals": ["You've sent too many messages", "Try again later", "rate limit"],
     "input": [
       "#prompt-textarea",
       "textarea[data-id='root']",
@@ -55,6 +59,8 @@
     ]
   },
   "claude": {
+    "timeout_seconds": 60,
+    "rate_limit_signals": ["rate limit", "Too many requests", "usage limit"],
     "input": [
       "div[contenteditable='true'][data-placeholder]",
       "div[contenteditable='true'].ProseMirror",
@@ -80,6 +86,8 @@
     ]
   },
   "perplexity": {
+    "timeout_seconds": 60,
+    "rate_limit_signals": ["rate limit", "Too many requests"],
     "input": [
       "textarea[placeholder*='Ask']",
       "textarea[name='q']",
@@ -104,6 +112,8 @@
     ]
   },
   "grok": {
+    "timeout_seconds": 60,
+    "rate_limit_signals": ["rate limit", "Too many requests", "You've reached your daily limit"],
     "input": [
       "textarea[placeholder]",
       "textarea"
@@ -129,6 +139,8 @@
     ]
   },
   "copilot": {
+    "timeout_seconds": 60,
+    "rate_limit_signals": ["Too many requests", "Something went wrong", "rate limit"],
     "input": [
       "textarea[placeholder]",
       "div[contenteditable='true'][aria-label]",
@@ -155,6 +167,8 @@
     ]
   },
   "deepseek": {
+    "timeout_seconds": 60,
+    "rate_limit_signals": ["Too many requests", "rate limit", "server is busy"],
     "input": [
       "textarea[placeholder*='Send']",
       "textarea[placeholder*='Ask']",
@@ -181,6 +195,8 @@
     ]
   },
   "mistral": {
+    "timeout_seconds": 60,
+    "rate_limit_signals": ["Too many requests", "rate limit", "quota"],
     "input": [
       "textarea[placeholder*='Ask']",
       "textarea[placeholder*='Message']",
