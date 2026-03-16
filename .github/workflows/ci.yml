@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint-and-import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (no Playwright browsers in CI)
+        run: pip install -r requirements.txt
+
+      - name: Check platform connector syntax
+        run: |
+          python -c "
+          from chorus.platforms.base import BaseAI
+          from chorus.platforms.gemini import Gemini
+          from chorus.platforms.chatgpt import ChatGPT
+          from chorus.platforms.claude import Claude
+          from chorus.platforms.perplexity import Perplexity
+          from chorus.platforms.grok import Grok
+          from chorus.platforms.copilot import Copilot
+          from chorus.platforms.deepseek import DeepSeek
+          from chorus.platforms.mistral import Mistral
+          print('All platform imports OK')
+          "
+
+      - name: Check main.py syntax
+        run: python -m py_compile main.py && echo "main.py OK"
+
+      - name: Lint with ruff (non-blocking)
+        run: |
+          pip install ruff
+          ruff check main.py chorus/platforms/ --select E,W --ignore E501 || true
