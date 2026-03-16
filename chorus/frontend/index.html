@@ -173,6 +173,12 @@ header .spacer{flex:1}
   </div>
   <div class="spacer"></div>
   <div class="ws-status disconnected" id="ws-status">● Disconnected</div>
+  <button id="onboarding-btn" onclick="openOnboarding()" title="Manage Accounts"
+          style="background:none;border:1px solid rgba(255,255,255,.15);cursor:pointer;
+                 padding:6px 14px;border-radius:6px;color:inherit;font-size:.83rem;
+                 margin-left:8px;">
+    Manage Accounts
+  </button>
 </header>
 
 <div id="app">
@@ -312,6 +318,7 @@ async function init(){
   try{
     const res = await fetch(`${API}/api/platforms`);
     platforms = await res.json();
+    window._platformMeta = platforms;
     // Load profiles for all platforms
     await Promise.all(Object.keys(platforms).map(loadProfilesFor));
     renderPlatforms();
@@ -971,6 +978,282 @@ function esc(s){
 }
 
 init();
+</script>
+
+<!-- ── Onboarding Wizard ──────────────────────────────────────── -->
+<div id="ob-overlay"
+     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);
+            z-index:950;align-items:center;justify-content:center;">
+  <div id="ob-modal"
+       style="background:var(--card-bg,#1a1a1a);border:1px solid var(--border,#2a2a2a);
+              border-radius:14px;padding:36px 40px;width:560px;max-height:88vh;
+              overflow-y:auto;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.5);">
+
+    <!-- Screen 1: Welcome -->
+    <div id="ob-s1">
+      <h2 style="margin:0 0 14px;font-size:1.15rem;font-weight:600;">Welcome to Chorus</h2>
+      <p style="opacity:.7;line-height:1.6;margin:0 0 28px;font-size:.9rem;">
+        Chorus opens a real browser for each AI platform so you can log in once.
+        Your sessions are saved locally in <code>~/.chorus/profiles/</code>.
+        You can skip any platform and add it later.
+      </p>
+      <button onclick="ob_showChecklist()"
+              style="padding:10px 24px;background:#2563eb;border:none;border-radius:8px;
+                     cursor:pointer;color:#fff;font-size:.9rem;font-weight:500;">
+        Get Started →
+      </button>
+    </div>
+
+    <!-- Screen 2: Checklist -->
+    <div id="ob-s2" style="display:none;">
+      <h2 style="margin:0 0 18px;font-size:1rem;font-weight:600;">Connect Your AI Platforms</h2>
+      <div id="ob-platform-grid"
+           style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px;"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button onclick="closeOnboarding()"
+                style="padding:8px 18px;background:none;border:1px solid var(--border,#2a2a2a);
+                       border-radius:7px;cursor:pointer;color:inherit;font-size:.87rem;">
+          Close
+        </button>
+        <button id="ob-done-btn" onclick="ob_showCompletion()" disabled
+                style="padding:8px 20px;background:#2563eb;border:none;border-radius:7px;
+                       cursor:pointer;color:#fff;font-size:.87rem;font-weight:500;opacity:.45;">
+          Done →
+        </button>
+      </div>
+    </div>
+
+    <!-- Screen 3: Per-platform step -->
+    <div id="ob-s3" style="display:none;">
+      <button onclick="ob_showChecklist()"
+              style="background:none;border:none;cursor:pointer;color:inherit;
+                     font-size:.85rem;opacity:.6;margin-bottom:16px;padding:0;">← Back</button>
+      <h2 id="ob-plat-title" style="margin:0 0 8px;font-size:1rem;font-weight:600;"></h2>
+      <p style="opacity:.65;font-size:.85rem;margin:0 0 24px;line-height:1.55;">
+        Click <strong>Open Browser</strong>. A Chromium window will open to the login page.
+        Log in with your account. Chorus will detect your session automatically.
+      </p>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;">
+        <button id="ob-open-btn" onclick="ob_openBrowser()"
+                style="padding:9px 20px;background:#2563eb;border:none;border-radius:7px;
+                       cursor:pointer;color:#fff;font-size:.87rem;font-weight:500;">
+          Open Browser
+        </button>
+        <span id="ob-wait-msg" style="display:none;font-size:.83rem;opacity:.6;">
+          ⏳ Waiting for login…
+        </span>
+        <span id="ob-auth-ok" style="display:none;color:#22c55e;font-size:.87rem;">✓ Logged in</span>
+        <span id="ob-timeout-msg" style="display:none;color:#f87171;font-size:.83rem;">
+          Timed out. Try again or skip.
+        </span>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button id="ob-skip-btn" onclick="ob_skip()"
+                style="padding:8px 16px;background:none;border:1px solid var(--border,#2a2a2a);
+                       border-radius:7px;cursor:pointer;color:inherit;font-size:.83rem;opacity:.7;">
+          Skip
+        </button>
+        <button id="ob-continue-btn" onclick="ob_showChecklist()" disabled
+                style="padding:8px 20px;background:#2563eb;border:none;border-radius:7px;
+                       cursor:pointer;color:#fff;font-size:.87rem;font-weight:500;opacity:.45;">
+          Continue →
+        </button>
+      </div>
+    </div>
+
+    <!-- Screen 4: Completion -->
+    <div id="ob-s4" style="display:none;">
+      <h2 style="margin:0 0 14px;font-size:1rem;font-weight:600;">You're all set!</h2>
+      <div id="ob-completion-list" style="margin-bottom:20px;"></div>
+      <p style="font-size:.82rem;opacity:.55;margin:0 0 24px;">
+        You can set up skipped platforms anytime from Manage Accounts.
+      </p>
+      <button onclick="ob_finish()"
+              style="padding:10px 24px;background:#2563eb;border:none;border-radius:8px;
+                     cursor:pointer;color:#fff;font-size:.9rem;font-weight:500;">
+        Start Using Chorus →
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Onboarding Wizard ───────────────────────────────────────────────────────
+(function () {
+  let _currentPlatform = null;
+  let _pollTimer = null;
+  let _timeoutTimer = null;
+  const POLL_MS = 2000;
+  const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
+  function _show(id) {
+    for (const s of ['ob-s1','ob-s2','ob-s3','ob-s4'])
+      document.getElementById(s).style.display = s === id ? 'block' : 'none';
+  }
+
+  async function _loadState() {
+    const r = await fetch('/api/onboarding/state');
+    return await r.json();
+  }
+
+  window.openOnboarding = async function () {
+    const state = await _loadState();
+    const hasAny = Object.values(state).some(v => v.status === 'completed');
+    document.getElementById('ob-overlay').style.display = 'flex';
+    if (hasAny) {
+      ob_showChecklist();
+    } else {
+      _show('ob-s1');
+    }
+  };
+
+  window.closeOnboarding = function () {
+    _stopPoll();
+    document.getElementById('ob-overlay').style.display = 'none';
+  };
+
+  window.ob_showChecklist = async function () {
+    _stopPoll();
+    const state = await _loadState();
+    const meta = window._platformMeta || {};
+    const grid = document.getElementById('ob-platform-grid');
+    grid.innerHTML = '';
+    let hasCompleted = false;
+    for (const [key, pm] of Object.entries(meta)) {
+      const s = (state[key] || {}).status || 'pending';
+      if (s === 'completed') hasCompleted = true;
+      const badge = s === 'completed'
+        ? '<span style="color:#22c55e;font-size:.78rem;">✓ Logged in</span>'
+        : s === 'skipped'
+        ? '<span style="opacity:.4;font-size:.78rem;">Skipped</span>'
+        : '<span style="opacity:.5;font-size:.78rem;">Pending</span>';
+      const btn = s !== 'completed'
+        ? `<button onclick="ob_startPlatform('${key}')"
+                   style="margin-top:6px;padding:5px 12px;background:#2563eb;border:none;
+                          border-radius:5px;cursor:pointer;color:#fff;font-size:.78rem;">
+             Set up
+           </button>`
+        : `<button onclick="ob_startPlatform('${key}')"
+                   style="margin-top:6px;padding:5px 12px;background:none;
+                          border:1px solid rgba(255,255,255,.15);border-radius:5px;
+                          cursor:pointer;color:inherit;font-size:.78rem;opacity:.6;">
+             Re-login
+           </button>`;
+      grid.insertAdjacentHTML('beforeend', `
+        <div style="padding:14px;border:1px solid var(--border,#2a2a2a);border-radius:9px;">
+          <div style="font-size:.88rem;font-weight:500;margin-bottom:4px;">
+            <span style="color:${(pm.color||'#888')};margin-right:6px;">${pm.icon||''}</span>
+            ${pm.name || key}
+          </div>
+          ${badge}${btn}
+        </div>`);
+    }
+    const doneBtn = document.getElementById('ob-done-btn');
+    doneBtn.disabled    = !hasCompleted;
+    doneBtn.style.opacity = hasCompleted ? '1' : '.45';
+    _show('ob-s2');
+  };
+
+  window.ob_startPlatform = function (platform) {
+    _currentPlatform = platform;
+    _stopPoll();
+    const meta = (window._platformMeta || {})[platform] || {};
+    document.getElementById('ob-plat-title').textContent = `Set up ${meta.name || platform}`;
+    document.getElementById('ob-wait-msg').style.display    = 'none';
+    document.getElementById('ob-auth-ok').style.display     = 'none';
+    document.getElementById('ob-timeout-msg').style.display = 'none';
+    document.getElementById('ob-open-btn').disabled         = false;
+    const cont = document.getElementById('ob-continue-btn');
+    cont.disabled    = true;
+    cont.style.opacity = '.45';
+    _show('ob-s3');
+  };
+
+  window.ob_openBrowser = async function () {
+    document.getElementById('ob-open-btn').disabled      = true;
+    document.getElementById('ob-wait-msg').style.display = 'inline';
+    await fetch(`/api/onboarding/${_currentPlatform}/open`, {method:'POST'});
+    _startPoll();
+    _timeoutTimer = setTimeout(() => {
+      _stopPoll();
+      document.getElementById('ob-wait-msg').style.display    = 'none';
+      document.getElementById('ob-timeout-msg').style.display = 'inline';
+      document.getElementById('ob-open-btn').disabled         = false;
+    }, TIMEOUT_MS);
+  };
+
+  function _startPoll() {
+    _pollTimer = setInterval(async () => {
+      try {
+        const r = await fetch(`/api/onboarding/${_currentPlatform}/status`);
+        const d = await r.json();
+        if (d.authenticated) {
+          _stopPoll();
+          document.getElementById('ob-wait-msg').style.display = 'none';
+          document.getElementById('ob-auth-ok').style.display  = 'inline';
+          const cont = document.getElementById('ob-continue-btn');
+          cont.disabled    = false;
+          cont.style.opacity = '1';
+        }
+      } catch(e) { /* network error during polling — keep polling */ }
+    }, POLL_MS);
+  }
+
+  function _stopPoll() {
+    if (_pollTimer)    { clearInterval(_pollTimer);  _pollTimer = null; }
+    if (_timeoutTimer) { clearTimeout(_timeoutTimer); _timeoutTimer = null; }
+  }
+
+  window.ob_skip = async function () {
+    await fetch(`/api/onboarding/${_currentPlatform}/skip`, {method:'POST'});
+    ob_showChecklist();
+  };
+
+  window.ob_showCompletion = async function () {
+    _stopPoll();
+    const state = await _loadState();
+    const list  = document.getElementById('ob-completion-list');
+    list.innerHTML = '';
+    for (const [key, info] of Object.entries(state)) {
+      const meta = (window._platformMeta || {})[key] || {};
+      const s = info.status;
+      list.insertAdjacentHTML('beforeend', `
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;
+                    border-bottom:1px solid var(--border,#2a2a2a);font-size:.87rem;">
+          <span style="color:${meta.color||'#888'};min-width:20px;">${meta.icon||''}</span>
+          <span style="flex:1;">${meta.name||key}</span>
+          <span style="font-size:.8rem;${s==='completed'?'color:#22c55e':'opacity:.4'}">
+            ${s==='completed'?'✓ Logged in':s==='skipped'?'Skipped':'Pending'}
+          </span>
+        </div>`);
+    }
+    _show('ob-s4');
+  };
+
+  window.ob_finish = async function () {
+    await fetch('/api/onboarding/complete', {method:'POST'});
+    closeOnboarding();
+  };
+
+  // Auto-trigger on page load if onboarding needed
+  window.addEventListener('load', async () => {
+    // Populate _platformMeta from existing platform data in the page
+    // (it should already be set by the main app JS before this runs)
+    if (!window._platformMeta) {
+      try {
+        const r = await fetch('/api/platforms');
+        if (r.ok) window._platformMeta = await r.json();
+      } catch(e) { window._platformMeta = {}; }
+    }
+
+    const state = await _loadState();
+    const needsSetup = !Object.values(state).some(v => v.status === 'completed');
+    if (needsSetup) {
+      document.getElementById('ob-overlay').style.display = 'flex';
+      _show('ob-s1');
+    }
+  });
+})();
 </script>
 </body>
 </html>
