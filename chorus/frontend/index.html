@@ -68,6 +68,9 @@ header .spacer{flex:1}
 .prog-spinner{width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
 .prog-done{color:#22c55e;font-size:14px}
 .prog-err{color:#ef4444;font-size:14px}
+.prog-action-btn{margin-left:6px;padding:2px 10px;font-size:11px;font-family:inherit;border:1px solid #ef4444;border-radius:var(--rs);background:transparent;color:#ef4444;cursor:pointer;transition:background .15s,color .15s}
+.prog-action-btn:hover:not(:disabled){background:#ef4444;color:#fff}
+.prog-action-btn:disabled{opacity:.5;cursor:not-allowed}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ── History ── */
@@ -493,11 +496,41 @@ async function sendQuery(){
     });
     const data = await res.json();
     currentSession = data.session_id;
+    window._currentSessionId = currentSession;
   } catch(e){
     toast('Failed to start query. Is Chorus running?');
     document.getElementById('send-btn').disabled = false;
     document.getElementById('send-btn').textContent = '⚡ Send to All AIs';
   }
+}
+
+function _parseErrorMessage(msg) {
+  const m = /^\[(\w+)\]\s*(.*)$/.exec(msg || '');
+  return m ? { error_code: m[1], message: m[2] } : { error_code: 'unknown', message: msg || 'Unknown error' };
+}
+
+async function retryPlatform(platform) {
+  const sessionId = currentSession;
+  if (!sessionId) return;
+  const btn = document.querySelector(`[data-retry="${platform}"]`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Retrying…'; }
+
+  const r = await fetch(`/api/sessions/${sessionId}/retry/${platform}`, {method:'POST'});
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'Retry';
+    }
+    // Check if max retries reached
+    try {
+      const detail = typeof d.detail === 'string' ? JSON.parse(d.detail) : d;
+      if (detail.code === 'max_retries') {
+        if (btn) { btn.textContent = 'Max retries reached'; btn.style.opacity = '0.4'; }
+      }
+    } catch(e) {}
+  }
+  // On success, the WebSocket will send new status updates — no additional action needed
 }
 
 function updateProgressCard(platform, status, message, response){
@@ -507,13 +540,27 @@ function updateProgressCard(platform, status, message, response){
   if(!card) return;
 
   card.className = `prog-card ${status}`;
-  if(msg) msg.textContent = message || status;
 
-  if(spin){
-    if(status === 'done'){
-      spin.outerHTML = `<span class="prog-done">✓</span>`;
-    } else if(status === 'error'){
-      spin.outerHTML = `<span class="prog-err">✕</span>`;
+  if(status === 'error'){
+    const { error_code, message: errMsg } = _parseErrorMessage(message);
+    const isAuthExpired = error_code === 'auth_expired';
+    card.style.borderColor = '#ef4444';
+    card.style.borderWidth = '2px';
+    if(msg) msg.textContent = errMsg;
+    if(spin){
+      const actionBtn = isAuthExpired
+        ? `<button class="prog-action-btn" onclick="ob_startPlatform('${platform}'); openOnboarding()">Re-login</button>`
+        : `<button class="prog-action-btn" data-retry="${platform}" onclick="retryPlatform('${platform}')">Retry</button>`;
+      spin.outerHTML = `<span class="prog-err">✕</span>${actionBtn}`;
+    }
+  } else {
+    card.style.borderColor = '';
+    card.style.borderWidth = '';
+    if(msg) msg.textContent = message || status;
+    if(spin){
+      if(status === 'done'){
+        spin.outerHTML = `<span class="prog-done">✓</span>`;
+      }
     }
   }
 }
@@ -576,6 +623,7 @@ async function sendFollowUp(){
     });
     const data = await res.json();
     currentSession = data.session_id;
+    window._currentSessionId = currentSession;
     toast('Follow-up sent to all AIs…');
   } catch(e){
     toast('Follow-up failed: '+e.message,'err');
@@ -888,6 +936,7 @@ function loadHistoryEntry(id){
   currentResponses = s.responses;
   currentPrompt    = s.prompt;
   currentSession   = s.id;
+  window._currentSessionId = currentSession;
   document.getElementById('prompt-input').value = s.prompt;
   showResultViews();
   renderTree(s.prompt, s.responses);
