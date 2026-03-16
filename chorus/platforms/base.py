@@ -69,6 +69,10 @@ class BaseAI(ABC):
                 f"add an account, and log in once. Current URL: {self.page.url}"
             )
 
+    async def is_authenticated(self) -> bool:
+        """Returns True if the user is logged in (inverse of check_auth)."""
+        return not await self.check_auth()
+
     # ── Abstract interface ────────────────────────────────────────
 
     @abstractmethod
