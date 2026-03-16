@@ -1,7 +1,10 @@
 import asyncio
 import importlib.resources
 import json
+import sys
+import threading
 import uuid
+import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -9,6 +12,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
+from playwright.sync_api import sync_playwright
 
 from chorus.browser import manager as browser_manager
 from chorus.websocket_manager import ws_manager
@@ -533,5 +537,37 @@ async def websocket_endpoint(ws: WebSocket):
         ws_manager.disconnect(ws)
 
 
+def _check_playwright():
+    """Exit with clear message if Playwright Chromium binary is missing."""
+    try:
+        with sync_playwright() as p:
+            binary = p.chromium.executable_path
+            if not Path(binary).exists():
+                raise FileNotFoundError(f"Chromium binary not found at {binary}")
+    except Exception:
+        print("Playwright Chromium not found. Run: playwright install chromium")
+        print("Then restart chorus.")
+        sys.exit(1)
+
+
+def main():
+    """Entry point for `chorus` CLI command."""
+    _CHORUS_DIR.mkdir(parents=True, exist_ok=True)
+    _check_playwright()
+
+    port = 4747
+
+    def _open_browser():
+        import time
+        time.sleep(1.5)
+        try:
+            webbrowser.open(f"http://localhost:{port}")
+        except Exception:
+            pass
+
+    threading.Thread(target=_open_browser, daemon=True).start()
+    uvicorn.run("chorus.main:app", host="127.0.0.1", port=port, log_level="warning")
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=4747, reload=False)
+    main()

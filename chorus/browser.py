@@ -5,7 +5,7 @@ Each platform gets its own persistent profile directory so login is saved.
 from pathlib import Path
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 
-PROFILES_DIR = Path(__file__).parent.parent / "profiles"
+PROFILES_DIR = Path.home() / ".chorus" / "profiles"
 
 
 class BrowserManager:
