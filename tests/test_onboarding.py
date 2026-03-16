@@ -1,5 +1,6 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+from fastapi.testclient import TestClient
 
 
 @pytest.mark.asyncio
@@ -79,3 +80,43 @@ def test_needs_onboarding_false_when_one_completed(tmp_path):
     state_file = tmp_path / "onboarding.json"
     onboarding.mark_completed("gemini", state_file)
     assert onboarding.needs_onboarding(state_file) is False
+
+
+@pytest.fixture
+def onboarding_client(tmp_path):
+    import chorus.main as m
+    # Redirect onboarding state file to tmp_path for isolation
+    m._ONBOARDING_FILE = tmp_path / "onboarding.json"
+    return TestClient(m.app)
+
+
+def test_onboarding_state_endpoint_returns_all_platforms(onboarding_client):
+    r = onboarding_client.get("/api/onboarding/state")
+    assert r.status_code == 200
+    data = r.json()
+    for p in ["gemini", "chatgpt", "claude", "perplexity", "grok", "copilot", "deepseek", "mistral"]:
+        assert p in data
+
+
+def test_onboarding_skip_marks_platform_skipped(onboarding_client, tmp_path):
+    import chorus.main as m
+    m._ONBOARDING_FILE = tmp_path / "onboarding.json"
+    r = onboarding_client.post("/api/onboarding/chatgpt/skip")
+    assert r.status_code == 200
+    from chorus.onboarding import load_state
+    state = load_state(tmp_path / "onboarding.json")
+    assert state["chatgpt"]["status"] == "skipped"
+
+
+def test_onboarding_unknown_platform_returns_400(onboarding_client):
+    r = onboarding_client.post("/api/onboarding/fakePlatform/skip")
+    assert r.status_code == 400
+
+
+def test_onboarding_status_no_context_returns_not_authenticated(onboarding_client):
+    """Without an open browser context, status should return authenticated=False."""
+    r = onboarding_client.get("/api/onboarding/gemini/status")
+    assert r.status_code == 200
+    data = r.json()
+    assert "authenticated" in data
+    assert data["authenticated"] is False

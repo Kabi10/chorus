@@ -16,6 +16,7 @@ from playwright.sync_api import sync_playwright
 
 from chorus.browser import manager as browser_manager
 from chorus.websocket_manager import ws_manager
+from chorus import onboarding as _onboarding
 from chorus.platforms.gemini import Gemini
 from chorus.platforms.chatgpt import ChatGPT
 from chorus.platforms.claude import Claude
@@ -43,6 +44,9 @@ PLATFORMS = {
     "deepseek":   DeepSeek,
     "mistral":    Mistral,
 }
+
+_ONBOARDING_FILE: Path     = Path.home() / ".chorus" / "onboarding.json"
+_onboarding_ctxs: dict     = {}  # platform -> open BrowserContext
 
 PLATFORM_META = {
     "gemini":     {"name": "Gemini",     "color": "#4285F4", "icon": "🌀"},
@@ -100,6 +104,13 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     await browser_manager.stop()
+    # Clean up any open onboarding contexts
+    for ctx in list(_onboarding_ctxs.values()):
+        try:
+            await ctx.close()
+        except Exception:
+            pass
+    _onboarding_ctxs.clear()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -525,6 +536,82 @@ def _build_consensus(responses: dict[str, str]) -> dict:
         "consensus_keywords": consensus_keywords,
         "summary_stats":     summary_stats,
     }
+
+
+# ── Onboarding ────────────────────────────────────────────────────────────────
+
+@app.post("/api/onboarding/complete")
+def onboarding_complete():
+    """Called when the wizard is dismissed."""
+    return {"ok": True}
+
+
+@app.get("/api/onboarding/state")
+def get_onboarding_state():
+    """Return full onboarding state for the wizard UI."""
+    return _onboarding.load_state(_ONBOARDING_FILE)
+
+
+@app.post("/api/onboarding/{platform}/open")
+async def onboarding_open(platform: str):
+    """Open a visible browser window for the user to log in."""
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
+    try:
+        profile_dir = Path.home() / ".chorus" / "profiles" / platform / "default"
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        ctx = await browser_manager._playwright.chromium.launch_persistent_context(
+            user_data_dir=str(profile_dir),
+            headless=False,
+            args=["--disable-blink-features=AutomationControlled"],
+            viewport={"width": 1280, "height": 800},
+        )
+        _onboarding_ctxs[platform] = ctx
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+        platform_instance = PLATFORMS[platform](page)
+        await page.goto(platform_instance.url, wait_until="domcontentloaded", timeout=20000)
+        return {"ok": True, "message": f"Browser opened for {platform}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/onboarding/{platform}/status")
+async def onboarding_status(platform: str):
+    """Poll authentication state. Saves profile data when authenticated."""
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
+
+    profile_dir = Path.home() / ".chorus" / "profiles" / platform / "default"
+    profile_exists = profile_dir.exists() and any(profile_dir.iterdir()) if profile_dir.exists() else False
+
+    ctx = _onboarding_ctxs.get(platform)
+    if ctx is None:
+        return {"authenticated": False, "profile_exists": profile_exists}
+
+    try:
+        # Reuse existing page — the page the user logged in on
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+        platform_instance = PLATFORMS[platform](page)
+        authenticated = await platform_instance.is_authenticated()
+
+        if authenticated:
+            # Close context — launch_persistent_context flushes session data to profile dir on close
+            await ctx.close()
+            _onboarding_ctxs.pop(platform, None)
+            _onboarding.mark_completed(platform, _ONBOARDING_FILE)
+            profile_exists = True
+
+        return {"authenticated": authenticated, "profile_exists": profile_exists}
+    except Exception as e:
+        return {"authenticated": False, "profile_exists": profile_exists, "error": str(e)}
+
+
+@app.post("/api/onboarding/{platform}/skip")
+def onboarding_skip(platform: str):
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
+    _onboarding.mark_skipped(platform, _ONBOARDING_FILE)
+    return {"ok": True}
 
 
 @app.websocket("/ws")
