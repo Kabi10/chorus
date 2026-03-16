@@ -354,6 +354,170 @@ def export_session(session_id: str):
     return "\n".join(lines)
 
 
+@app.get("/api/sessions/{session_id}/consensus")
+def get_consensus(session_id: str):
+    """
+    Analyse all responses for a session and return:
+    - agreed_themes   : points mentioned by >= 50 % of platforms
+    - unique_points   : points found only in one platform's response
+    - platform_scores : pairwise Jaccard similarity between platforms
+    - top_keywords    : top-10 keywords per platform (TF-style, stop-words stripped)
+    - summary_stats   : word count, sentence count per platform
+    """
+    entry = next((h for h in prompt_history if h["id"] == session_id), None)
+    if not entry:
+        s = active_sessions.get(session_id)
+        if not s or s.get("status") != "complete":
+            raise HTTPException(404, "Session not found or still running")
+        entry = {**s, "id": session_id}
+
+    responses: dict[str, str] = {
+        k: v for k, v in (entry.get("responses") or {}).items()
+        if v and not v.startswith("[Error")
+    }
+    if not responses:
+        raise HTTPException(422, "No valid responses to analyse")
+
+    return _build_consensus(responses)
+
+
+_STOP_WORDS = {
+    "a","an","the","and","or","but","in","on","at","to","for","of","with",
+    "is","are","was","were","be","been","being","have","has","had","do","does",
+    "did","will","would","could","should","may","might","can","this","that",
+    "these","those","i","you","he","she","it","we","they","my","your","its",
+    "our","their","also","as","from","by","not","no","so","if","then","than",
+    "when","where","which","who","what","how","all","any","each","more","most",
+    "other","some","such","into","up","out","about","just","like","use","using",
+    "used","get","gets","got","make","makes","made","one","two","first","second",
+}
+
+
+def _tokenize_sentences(text: str) -> list[str]:
+    import re
+    sents = re.split(r'(?<=[.!?])\s+', text.strip())
+    return [s.strip() for s in sents if len(s.strip()) > 20]
+
+
+def _keywords(text: str, top_n: int = 10) -> list[str]:
+    import re
+    words = re.findall(r"[a-z]{3,}", text.lower())
+    freq: dict[str, int] = {}
+    for w in words:
+        if w not in _STOP_WORDS:
+            freq[w] = freq.get(w, 0) + 1
+    return [w for w, _ in sorted(freq.items(), key=lambda x: -x[1])[:top_n]]
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def _sentence_words(s: str) -> set[str]:
+    import re
+    return {w for w in re.findall(r"[a-z]{3,}", s.lower()) if w not in _STOP_WORDS}
+
+
+def _build_consensus(responses: dict[str, str]) -> dict:
+    platforms = list(responses.keys())
+    n = len(platforms)
+
+    # ── Sentence sets per platform ────────────────────────────────────
+    sent_sets = {p: _tokenize_sentences(responses[p]) for p in platforms}
+    word_sets = {p: _sentence_words(responses[p]) for p in platforms}
+
+    # ── Pairwise platform similarity ──────────────────────────────────
+    platform_scores: dict[str, dict[str, float]] = {}
+    for i, pa in enumerate(platforms):
+        platform_scores[pa] = {}
+        for pb in platforms[i+1:]:
+            score = round(_jaccard(word_sets[pa], word_sets[pb]), 3)
+            platform_scores[pa][pb] = score
+
+    # ── Agreed themes: sentences from one platform that have a
+    #    Jaccard match >= 0.25 in >= half the other platforms ──────────
+    AGREE_THRESH  = 0.25
+    AGREE_MIN_PCT = 0.5        # fraction of *other* platforms needed
+
+    agreed_raw:  list[dict] = []
+    unique_raw:  list[dict] = []
+    seen_agreed: set[str]   = set()
+
+    for p in platforms:
+        for sent in sent_sets[p]:
+            if sent in seen_agreed:
+                continue
+            sw = _sentence_words(sent)
+            matches = []
+            for other in platforms:
+                if other == p:
+                    continue
+                best = max(
+                    (_jaccard(sw, _sentence_words(os_)) for os_ in sent_sets[other]),
+                    default=0.0,
+                )
+                if best >= AGREE_THRESH:
+                    matches.append(other)
+
+            coverage = len(matches) / max(n - 1, 1)
+            if coverage >= AGREE_MIN_PCT:
+                agreed_raw.append({
+                    "sentence":  sent,
+                    "platforms": [p] + matches,
+                    "coverage":  round(coverage, 2),
+                })
+                seen_agreed.add(sent)
+            elif not matches:
+                unique_raw.append({"sentence": sent, "platform": p})
+
+    # Deduplicate agreed themes (keep highest coverage)
+    agreed_raw.sort(key=lambda x: -x["coverage"])
+    agreed_themes = agreed_raw[:15]
+
+    # Keep unique points (max 5 per platform)
+    by_plat: dict[str, list] = {p: [] for p in platforms}
+    for u in unique_raw:
+        lst = by_plat[u["platform"]]
+        if len(lst) < 5:
+            lst.append(u["sentence"])
+    unique_points = {p: sents for p, sents in by_plat.items() if sents}
+
+    # ── Keywords & stats ──────────────────────────────────────────────
+    import re
+    top_keywords   = {p: _keywords(responses[p]) for p in platforms}
+    summary_stats  = {
+        p: {
+            "words":     len(re.findall(r"\S+", responses[p])),
+            "sentences": len(sent_sets[p]),
+            "chars":     len(responses[p]),
+        }
+        for p in platforms
+    }
+
+    # ── Consensus keywords (in >= half of platforms' top lists) ───────
+    kw_counts: dict[str, int] = {}
+    for kws in top_keywords.values():
+        for kw in kws:
+            kw_counts[kw] = kw_counts.get(kw, 0) + 1
+    consensus_keywords = [
+        kw for kw, cnt in sorted(kw_counts.items(), key=lambda x: -x[1])
+        if cnt >= max(n // 2, 1)
+    ][:15]
+
+    return {
+        "session_id":        None,   # filled by caller if needed
+        "platform_count":    n,
+        "agreed_themes":     agreed_themes,
+        "unique_points":     unique_points,
+        "platform_scores":   platform_scores,
+        "top_keywords":      top_keywords,
+        "consensus_keywords": consensus_keywords,
+        "summary_stats":     summary_stats,
+    }
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await ws_manager.connect(ws)

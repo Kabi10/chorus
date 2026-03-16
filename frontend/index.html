@@ -300,8 +300,8 @@ function handleSessionComplete(msg){
   showResultViews();
   renderTree(msg.prompt, msg.responses);
   renderCards(msg.responses);
-  renderConsensus(msg.prompt, msg.responses);
   renderDiff(msg.prompt, msg.responses);
+  // Consensus loads on demand (server call) — pre-render only tree/cards/diff
   // History is persisted server-side; reload from server
   await loadHistory();
   toast('All responses collected!');
@@ -584,6 +584,7 @@ function switchView(view, btn){
   btn.classList.add('active');
   if(view==='tree'      && Object.keys(currentResponses).length) renderTree(currentPrompt, currentResponses);
   if(view==='diff'      && Object.keys(currentResponses).length) renderDiff(currentPrompt, currentResponses);
+  if(view==='consensus' && Object.keys(currentResponses).length) renderConsensus(currentPrompt, currentResponses);
 }
 
 // ── D3 Tree ────────────────────────────────────────────────────────
@@ -715,78 +716,119 @@ function renderCards(responses){
 }
 
 // ── Consensus ──────────────────────────────────────────────────────
-function renderConsensus(prompt, responses){
+async function renderConsensus(prompt, responses){
   const view = document.getElementById('consensus-view');
   const keys = Object.keys(responses);
   if(!keys.length){ view.innerHTML='<p style="color:var(--dim);padding:20px">No responses yet.</p>'; return; }
 
-  // Simple keyword extraction
-  const stopwords = new Set(['the','a','an','is','are','was','were','be','been','being','have',
-    'has','had','do','does','did','will','would','could','should','may','might','shall','can',
-    'this','that','these','those','and','or','but','in','on','at','to','for','of','with','by',
-    'from','it','its','we','you','they','he','she','i','me','my','your','our','their','all',
-    'as','if','so','when','then','also','just','not','no','more','than','other','some','any',
-    'what','which','who','how','why','where','there','here','about','into','through','during']);
+  view.innerHTML = `<div class="consensus-banner"><h3>🎯 Consensus Report</h3><p style="color:var(--dim)">Analysing…</p></div>`;
 
-  function extractKeywords(text){
-    return text.toLowerCase().replace(/[^a-z\s]/g,'').split(/\s+/)
-      .filter(w=>w.length>3&&!stopwords.has(w));
+  // ── Server-side analysis ──────────────────────────────────────────
+  let data = null;
+  if(currentSession){
+    try{
+      const r = await fetch(`${API}/api/sessions/${currentSession}/consensus`);
+      if(r.ok) data = await r.json();
+    } catch(e){}
   }
 
-  function findCommonThemes(responses){
-    const allWords = {};
-    for(const [, resp] of Object.entries(responses)){
-      const words = new Set(extractKeywords(resp));
-      words.forEach(w=>{ allWords[w]=(allWords[w]||0)+1; });
-    }
-    return Object.entries(allWords)
-      .filter(([,c])=>c>=Math.max(2, Math.floor(keys.length*.5)))
-      .sort((a,b)=>b[1]-a[1])
-      .slice(0,12)
-      .map(([w,c])=>({word:w,count:c,pct:Math.round(c/keys.length*100)}));
-  }
+  if(!data){ view.innerHTML = `<div class="consensus-banner"><h3>🎯 Consensus Report</h3><p style="color:var(--red)">Could not fetch analysis from server.</p></div>`; return; }
 
-  const themes = findCommonThemes(responses);
-  const agreePct = themes.length ? Math.round(themes.filter(t=>t.count===keys.length).length/themes.length*100) : 0;
+  const { agreed_themes=[], unique_points={}, platform_scores={}, top_keywords={},
+          consensus_keywords=[], summary_stats={} } = data;
 
-  let html = `
-    <div class="consensus-banner">
-      <h3>🎯 Consensus Report</h3>
-      <p>${keys.length} AIs consulted · ${themes.length} shared themes found · ~${agreePct}% full agreement</p>
+  let html = `<div class="consensus-banner">
+    <h3>🎯 Consensus Report</h3>
+    <p>${keys.length} AIs consulted · ${agreed_themes.length} shared themes · ${consensus_keywords.length} consensus keywords</p>
+  </div>`;
+
+  // Consensus keywords pill row
+  if(consensus_keywords.length){
+    html += `<div class="cons-section">
+      <div class="cons-section-title">🔑 Consensus keywords</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${consensus_keywords.map(kw=>`<span style="background:var(--accent);color:#fff;padding:3px 10px;border-radius:20px;font-size:12px">${esc(kw)}</span>`).join('')}
+      </div>
     </div>`;
-
-  if(themes.length){
-    const full = themes.filter(t=>t.count===keys.length);
-    const majority = themes.filter(t=>t.count<keys.length&&t.count>1);
-
-    if(full.length){
-      html += `<div class="cons-section">
-        <div class="cons-section-title">✅ All AIs agree (${keys.length}/${keys.length})</div>`;
-      full.forEach(t=>{
-        const agreeing = keys.filter(k=>extractKeywords(responses[k]).includes(t.word));
-        html+=`<div class="cons-item">
-          <div class="cons-item-text">Mentioned: <strong>${t.word}</strong></div>
-          <div class="cons-agree">${agreeing.map(k=>{const p=platforms[k]||{icon:'🤖',name:k};return`<span class="agree-badge">${p.icon} ${p.name}</span>`;}).join('')}</div>
-        </div>`;
-      });
-      html+='</div>';
-    }
-
-    if(majority.length){
-      html += `<div class="cons-section">
-        <div class="cons-section-title">⚡ Majority agree</div>`;
-      majority.forEach(t=>{
-        const agreeing = keys.filter(k=>extractKeywords(responses[k]).includes(t.word));
-        html+=`<div class="cons-item">
-          <div class="cons-item-text">Mentioned: <strong>${t.word}</strong> (${t.count}/${keys.length} AIs)</div>
-          <div class="cons-agree">${agreeing.map(k=>{const p=platforms[k]||{icon:'🤖',name:k};return`<span class="agree-badge">${p.icon} ${p.name}</span>`;}).join('')}</div>
-        </div>`;
-      });
-      html+='</div>';
-    }
-  } else {
-    html += `<p style="color:var(--dim);font-size:13px;padding:10px 0">Not enough shared language found across responses for automatic consensus. Try the Cards view to compare manually.</p>`;
   }
+
+  // Agreed themes (sentences)
+  if(agreed_themes.length){
+    html += `<div class="cons-section">
+      <div class="cons-section-title">✅ Agreed themes (${agreed_themes.length})</div>`;
+    agreed_themes.slice(0,10).forEach(t=>{
+      const pct = Math.round(t.coverage * 100);
+      const badges = (t.platforms||[]).map(k=>{
+        const p = platforms[k]||{icon:'🤖',name:k};
+        return `<span class="agree-badge">${p.icon} ${p.name}</span>`;
+      }).join('');
+      html += `<div class="cons-item">
+        <div class="cons-item-text">${esc(t.sentence)}</div>
+        <div class="cons-agree" style="margin-top:5px">
+          ${badges}
+          <span style="margin-left:auto;font-size:10px;color:var(--dim)">${pct}% agreement</span>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Unique points per platform
+  const upKeys = Object.keys(unique_points);
+  if(upKeys.length){
+    html += `<div class="cons-section">
+      <div class="cons-section-title">🔭 Unique to each AI</div>`;
+    upKeys.forEach(plat=>{
+      const p = platforms[plat]||{icon:'🤖',name:plat};
+      const sents = unique_points[plat]||[];
+      if(!sents.length) return;
+      html += `<div style="margin-bottom:12px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:6px">${p.icon} ${p.name}</div>
+        ${sents.map(s=>`<div class="cons-item" style="margin-bottom:6px"><div class="cons-item-text">${esc(s)}</div></div>`).join('')}
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Pairwise similarity heatmap (mini table)
+  const platList = Object.keys(platform_scores);
+  if(platList.length >= 2){
+    html += `<div class="cons-section">
+      <div class="cons-section-title">📊 Platform similarity</div>
+      <div style="display:flex;flex-direction:column;gap:6px">`;
+    platList.forEach(pa=>{
+      Object.entries(platform_scores[pa]||{}).forEach(([pb, score])=>{
+        const pctScore = Math.round(score * 100);
+        const col = pctScore > 60 ? 'var(--green)' : pctScore > 30 ? 'var(--yellow)' : 'var(--dim)';
+        const pa_ = platforms[pa]||{icon:'🤖',name:pa};
+        const pb_ = platforms[pb]||{icon:'🤖',name:pb};
+        html += `<div style="display:flex;align-items:center;gap:8px;font-size:12px">
+          <span style="width:80px">${pa_.icon} ${pa_.name}</span>
+          <span style="color:var(--dimmer)">↔</span>
+          <span style="width:80px">${pb_.icon} ${pb_.name}</span>
+          <div style="flex:1;height:4px;border-radius:2px;background:var(--s3)">
+            <div style="width:${pctScore}%;height:100%;border-radius:2px;background:${col}"></div>
+          </div>
+          <span style="color:${col};width:30px;text-align:right">${pctScore}%</span>
+        </div>`;
+      });
+    });
+    html += `</div></div>`;
+  }
+
+  // Stats table
+  html += `<div class="cons-section">
+    <div class="cons-section-title">📈 Response stats</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">`;
+  Object.entries(summary_stats).forEach(([plat, st])=>{
+    const p = platforms[plat]||{icon:'🤖',name:plat};
+    html += `<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);padding:10px">
+      <div style="font-size:12px;font-weight:600;margin-bottom:6px">${p.icon} ${p.name}</div>
+      <div style="font-size:11px;color:var(--dim)">${st.words} words</div>
+      <div style="font-size:11px;color:var(--dim)">${st.sentences} sentences</div>
+    </div>`;
+  });
+  html += `</div></div>`;
 
   view.innerHTML = html;
 }
@@ -843,8 +885,8 @@ function loadHistoryEntry(id){
   showResultViews();
   renderTree(s.prompt, s.responses);
   renderCards(s.responses);
-  renderConsensus(s.prompt, s.responses);
   renderDiff(s.prompt, s.responses);
+  // Consensus loaded on demand when user clicks the tab
 }
 
 async function deleteHistory(id){
