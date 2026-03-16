@@ -1,6 +1,7 @@
 import asyncio
 import importlib.resources
 import json
+import json as _json
 import sys
 import threading
 import uuid
@@ -13,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 from playwright.sync_api import sync_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeout
 
 from chorus.browser import manager as browser_manager
 from chorus.websocket_manager import ws_manager
@@ -25,6 +27,41 @@ from chorus.platforms.grok import Grok
 from chorus.platforms.copilot import Copilot
 from chorus.platforms.deepseek import DeepSeek
 from chorus.platforms.mistral import Mistral
+
+_UNIVERSAL_RATE_SIGNALS = [
+    "too many requests", "rate limit", "try again later", "quota exceeded",
+]
+
+
+def _classify_error(platform: str, exc: Exception, page_text: str = "") -> tuple[str, str]:
+    """Map an exception + page content to (error_code, human_message)."""
+    page_lower = page_text.lower()
+
+    # Check rate limit signals (platform-specific + universal)
+    import importlib.resources as _ir, json as _j
+    try:
+        _sel = _j.loads(_ir.files("chorus").joinpath("selectors.json").read_text())
+    except Exception:
+        _sel = {}
+    signals = list(_sel.get(platform, {}).get("rate_limit_signals", []))
+    signals += _UNIVERSAL_RATE_SIGNALS
+    if any(s.lower() in page_lower for s in signals):
+        platform_name = PLATFORM_META.get(platform, {}).get("name", platform.capitalize())
+        return "rate_limited", f"{platform_name} is rate-limiting requests. Wait a moment and retry."
+
+    # asyncio.TimeoutError is a subclass of TimeoutError in Python 3.11+,
+    # but a separate class in 3.10. Check both.
+    if isinstance(exc, (asyncio.TimeoutError, TimeoutError)) and not isinstance(exc, PlaywrightTimeout):
+        return "timeout", f"{platform.capitalize()} took too long to respond. Try retrying."
+
+    if isinstance(exc, PlaywrightTimeout) and "rate" not in page_lower:
+        return "selector_error", (
+            f"{platform.capitalize()} UI may have changed. "
+            "Check for a platform update in the Chorus repo."
+        )
+
+    return "unknown", f"{platform.capitalize()}: {str(exc)[:120]}"
+
 
 _CHORUS_DIR  = Path.home() / ".chorus"
 _CHORUS_DIR.mkdir(parents=True, exist_ok=True)
@@ -167,24 +204,57 @@ async def run_query(req: QueryRequest):
 
 async def run_platform(session_id: str, platform_key: str, prompt: str, profile: str):
     await ws_manager.send_status(session_id, platform_key, "waiting", "Opening browser…")
+    import importlib.resources as _ir, json as _j
+    try:
+        _sel = _j.loads(_ir.files("chorus").joinpath("selectors.json").read_text())
+    except Exception:
+        _sel = {}
+    platform_timeout = _sel.get(platform_key, {}).get("timeout_seconds", 60)
+    page_text = ""
     try:
         page = await browser_manager.get_page(platform_key, profile)
         PlatformClass = PLATFORMS[platform_key]
         ai = PlatformClass(page)
 
         await ws_manager.send_status(session_id, platform_key, "typing", "Submitting prompt…")
-        await ai.submit_prompt(prompt)
+        await asyncio.wait_for(ai.submit_prompt(prompt), timeout=platform_timeout)
 
         await ws_manager.send_status(session_id, platform_key, "typing", "Waiting for response…")
-        response = await ai.wait_for_response(timeout=120)
+        response = await asyncio.wait_for(
+            ai.wait_for_response(timeout=platform_timeout),
+            timeout=platform_timeout + 5,
+        )
 
         active_sessions[session_id]["responses"][platform_key] = response
         await ws_manager.send_status(session_id, platform_key, "done", "Done", response)
 
     except Exception as e:
-        err = str(e)
-        active_sessions[session_id]["responses"][platform_key] = f"[Error: {err}]"
-        await ws_manager.send_status(session_id, platform_key, "error", err)
+        try:
+            page = await browser_manager.get_page(platform_key, profile)
+            page_text = await page.content()
+        except Exception:
+            pass
+        error_code, message = _classify_error(platform_key, e, page_text)
+
+        # Best-effort auth expiry check — page may be in broken state
+        try:
+            p = await browser_manager.get_page(platform_key, profile)
+            ai = PLATFORMS[platform_key](p)
+            if not await asyncio.wait_for(ai.is_authenticated(), timeout=5):
+                error_code, message = "auth_expired", (
+                    f"Your {platform_key.capitalize()} session has expired. "
+                    "Click Re-login to reconnect."
+                )
+        except Exception:
+            pass  # auth check is best-effort
+
+        active_sessions[session_id]["responses"][platform_key] = {
+            "error": True, "error_code": error_code, "message": message,
+        }
+        await ws_manager.send_status(
+            session_id, platform_key, "error",
+            f"[{error_code}] {message}",
+        )
 
 
 async def run_session(session_id: str, prompt: str, platforms: list[str], profiles: dict):
@@ -220,6 +290,47 @@ def get_session(session_id: str):
     if session_id not in active_sessions:
         raise HTTPException(404)
     return active_sessions[session_id]
+
+
+_retry_locks: dict = {}  # key = "{session_id}:{platform}"
+
+
+@app.post("/api/sessions/{session_id}/retry/{platform}")
+async def retry_platform(session_id: str, platform: str):
+    if session_id not in active_sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if platform not in PLATFORMS:
+        raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
+
+    lock_key = f"{session_id}:{platform}"
+    lock = _retry_locks.setdefault(lock_key, asyncio.Lock())
+
+    if lock.locked():
+        raise HTTPException(status_code=409, detail="Retry already in progress for this platform")
+
+    session = active_sessions[session_id]
+    retrying: set = session.setdefault("_retrying", set())
+
+    if platform in retrying:
+        raise HTTPException(status_code=409, detail="Retry already in progress for this platform")
+
+    retry_count = session.setdefault("_retry_counts", {})
+    if retry_count.get(platform, 0) >= 3:
+        raise HTTPException(status_code=422, detail=_json.dumps({"error": "Max retries reached", "code": "max_retries"}))
+
+    retrying.add(platform)
+    retry_count[platform] = retry_count.get(platform, 0) + 1
+
+    profile = session.get("profiles", {}).get(platform, "default")
+    asyncio.create_task(_retry_and_cleanup(session_id, platform, session["prompt"], profile))
+    return {"ok": True}
+
+
+async def _retry_and_cleanup(session_id: str, platform: str, prompt: str, profile: str):
+    try:
+        await run_platform(session_id, platform, prompt, profile)
+    finally:
+        active_sessions.get(session_id, {}).get("_retrying", set()).discard(platform)
 
 
 @app.post("/api/sessions/{session_id}/followup")
