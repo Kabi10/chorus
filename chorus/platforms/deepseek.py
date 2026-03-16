@@ -3,10 +3,11 @@ from .base import BaseAI
 
 
 class DeepSeek(BaseAI):
-    name  = "DeepSeek"
-    url   = "https://chat.deepseek.com"
-    color = "#4d6bfe"
-    icon  = "🔵"
+    name         = "DeepSeek"
+    url          = "https://chat.deepseek.com"
+    color        = "#4d6bfe"
+    icon         = "🔵"
+    platform_key = "deepseek"
 
     async def submit_prompt(self, prompt: str) -> None:
         await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)

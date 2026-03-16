@@ -1,0 +1,207 @@
+{
+  "gemini": {
+    "input": [
+      "rich-textarea div[contenteditable='true']",
+      "div[contenteditable='true'][aria-label*='message']",
+      "textarea[aria-label*='message']",
+      "div[contenteditable='true']"
+    ],
+    "send_button": [
+      "button[aria-label='Send message']",
+      "button[data-test-id='send-button']",
+      "button[jsname='Jh9lGc']"
+    ],
+    "response": [
+      ".response-content p",
+      "model-response .markdown p",
+      "message-content p",
+      ".chat-history model-response p"
+    ],
+    "auth_check": [
+      "input[type='email']",
+      "#identifierId",
+      "form[action*='accounts.google.com']"
+    ],
+    "loading_indicator": [
+      ".loading-indicator",
+      "[aria-label='Gemini is thinking']",
+      ".progress-bar"
+    ]
+  },
+  "chatgpt": {
+    "input": [
+      "#prompt-textarea",
+      "textarea[data-id='root']",
+      "div[contenteditable='true'][data-slate-editor]",
+      "textarea[placeholder*='Message']"
+    ],
+    "send_button": [
+      "button[data-testid='send-button']:not([disabled])",
+      "button[aria-label='Send message']:not([disabled])"
+    ],
+    "response": [
+      "[data-message-author-role='assistant'] .markdown p",
+      ".markdown.prose p",
+      "[data-testid='conversation-turn-*'] .markdown p"
+    ],
+    "auth_check": [
+      "input[name='username']",
+      "input[type='email'][name='email']",
+      "button[data-testid='login-button']"
+    ],
+    "loading_indicator": [
+      "button[aria-label='Stop streaming']",
+      ".result-streaming"
+    ]
+  },
+  "claude": {
+    "input": [
+      "div[contenteditable='true'][data-placeholder]",
+      "div[contenteditable='true'].ProseMirror",
+      "div[contenteditable='true']"
+    ],
+    "send_button": [
+      "button[aria-label='Send message']:not([disabled])",
+      "button[type='submit']:not([disabled])"
+    ],
+    "response": [
+      "[data-testid='assistant-message'] .font-claude-message",
+      ".font-claude-message",
+      "[data-testid='assistant-message'] p"
+    ],
+    "auth_check": [
+      "input[name='email']",
+      "form[action*='login']",
+      "button[data-testid='login']"
+    ],
+    "loading_indicator": [
+      ".streaming-indicator",
+      "[data-is-streaming='true']"
+    ]
+  },
+  "perplexity": {
+    "input": [
+      "textarea[placeholder*='Ask']",
+      "textarea[name='q']",
+      "textarea"
+    ],
+    "send_button": [
+      "button[aria-label*='Submit']",
+      "button[type='submit']"
+    ],
+    "response": [
+      ".prose p",
+      "[class*='answer'] p",
+      "[data-testid*='answer'] p"
+    ],
+    "auth_check": [
+      "input[type='email']",
+      "form[action*='login']"
+    ],
+    "loading_indicator": [
+      ".loading",
+      "[aria-label*='loading']"
+    ]
+  },
+  "grok": {
+    "input": [
+      "textarea[placeholder]",
+      "textarea"
+    ],
+    "send_button": [
+      "button[aria-label*='Send']",
+      "button[data-testid*='send']",
+      "button[type='submit']:not([disabled])"
+    ],
+    "response": [
+      "[data-testid='bot-message'] p",
+      "[data-testid='bot-message']",
+      ".prose p"
+    ],
+    "auth_check": [
+      "input[autocomplete='username']",
+      "input[name='text']",
+      "a[href*='login']"
+    ],
+    "loading_indicator": [
+      "[aria-label='Loading']",
+      ".loading-spinner"
+    ]
+  },
+  "copilot": {
+    "input": [
+      "textarea[placeholder]",
+      "div[contenteditable='true'][aria-label]",
+      "textarea"
+    ],
+    "send_button": [
+      "button[aria-label*='Send']",
+      "button[aria-label*='Submit']",
+      "button[type='submit']:not([disabled])"
+    ],
+    "response": [
+      "cib-message-group[source='bot'] cib-message p",
+      "[class*='response'] p",
+      ".ac-textBlock p"
+    ],
+    "auth_check": [
+      "input[type='email']",
+      "input[name='loginfmt']",
+      "form[action*='microsoft.com']"
+    ],
+    "loading_indicator": [
+      ".loading-dots",
+      "cib-typing-indicator"
+    ]
+  },
+  "deepseek": {
+    "input": [
+      "textarea[placeholder*='Send']",
+      "textarea[placeholder*='Ask']",
+      "textarea"
+    ],
+    "send_button": [
+      "button[aria-label*='Send']",
+      "div[role='button'][aria-label*='Send']",
+      "button[type='submit']:not([disabled])"
+    ],
+    "response": [
+      ".ds-markdown p",
+      ".chat-message-content p",
+      "[class*='assistant'] p"
+    ],
+    "auth_check": [
+      "input[type='email']",
+      "input[placeholder*='email']",
+      "form[action*='login']"
+    ],
+    "loading_indicator": [
+      ".ds-loading",
+      "[class*='generating']"
+    ]
+  },
+  "mistral": {
+    "input": [
+      "textarea[placeholder*='Ask']",
+      "textarea[placeholder*='Message']",
+      "textarea"
+    ],
+    "send_button": [
+      "button[aria-label*='Send']",
+      "button[type='submit']:not([disabled])"
+    ],
+    "response": [
+      "[data-role='assistant'] p",
+      ".message-content p",
+      "[class*='assistant-message'] p"
+    ],
+    "auth_check": [
+      "input[type='email']",
+      "form[action*='login']"
+    ],
+    "loading_indicator": [
+      ".generating",
+      "[aria-label*='generating']"
+    ]
+  }
+}

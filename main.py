@@ -77,6 +77,9 @@ class QueryRequest(BaseModel):
     platforms: list[str] = list(PLATFORMS.keys())
     profiles:  dict[str, str] = {}
 
+class FollowUpRequest(BaseModel):
+    prompt: str
+
 
 @app.on_event("startup")
 async def startup():
@@ -197,6 +200,108 @@ def get_session(session_id: str):
     if session_id not in active_sessions:
         raise HTTPException(404)
     return active_sessions[session_id]
+
+
+@app.post("/api/sessions/{session_id}/followup")
+async def followup_session(session_id: str, req: FollowUpRequest):
+    """Send a follow-up prompt to the same browser pages (conversational context)."""
+    if session_id not in active_sessions:
+        raise HTTPException(404, "Session not found — start a new query first")
+    if not req.prompt.strip():
+        raise HTTPException(400, "Follow-up prompt cannot be empty")
+
+    session = active_sessions[session_id]
+    if session["status"] == "running":
+        raise HTTPException(409, "Previous query still running")
+
+    platforms = session["platforms"]
+    profiles  = session.get("profiles", {})
+
+    # Reuse existing session — just send new prompt to same pages
+    new_id = str(uuid.uuid4())[:8]
+    active_sessions[new_id] = {
+        "prompt":    req.prompt,
+        "platforms": platforms,
+        "responses": {},
+        "status":    "running",
+        "parent_id": session_id,
+        "profiles":  profiles,
+    }
+    asyncio.create_task(run_followup(new_id, session_id, req.prompt, platforms))
+    return {"session_id": new_id, "parent_id": session_id}
+
+
+async def run_followup(session_id: str, parent_id: str, prompt: str, platforms: list[str]):
+    """Send follow-up on existing browser pages without navigating away."""
+    tasks = [
+        run_followup_platform(session_id, p, prompt)
+        for p in platforms
+    ]
+    await asyncio.gather(*tasks, return_exceptions=True)
+    active_sessions[session_id]["status"] = "complete"
+    responses = active_sessions[session_id]["responses"]
+
+    entry = {
+        "id":         session_id,
+        "prompt":     prompt,
+        "platforms":  platforms,
+        "responses":  responses,
+        "parent_id":  parent_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    prompt_history.append(entry)
+    save_history()
+
+    await ws_manager.broadcast({
+        "type":       "session_complete",
+        "session_id": session_id,
+        "responses":  responses,
+        "prompt":     prompt,
+        "is_followup": True,
+        "parent_id":  parent_id,
+    })
+
+
+async def run_followup_platform(session_id: str, platform_key: str, prompt: str):
+    """Submit follow-up to an existing page without reloading."""
+    await ws_manager.send_status(session_id, platform_key, "typing", "Submitting follow-up…")
+    try:
+        # Get the existing page (already on the chat)
+        page = await browser_manager.get_page(platform_key, "default")
+        PlatformClass = PLATFORMS[platform_key]
+        ai = PlatformClass(page)
+
+        # Type into the existing input (no navigate — keeps conversation context)
+        input_sel = ai._input_sel()
+        el = await page.wait_for_selector(input_sel, timeout=10000)
+        await el.click()
+        tag = await el.evaluate("el => el.tagName.toLowerCase()")
+        if tag == "textarea":
+            await el.fill(prompt)
+        else:
+            await page.keyboard.type(prompt, delay=10)
+
+        send_sel = ai._send_sel()
+        if send_sel:
+            try:
+                btn = await page.wait_for_selector(send_sel, timeout=3000)
+                await btn.click()
+            except Exception:
+                await page.keyboard.press("Enter")
+        else:
+            await page.keyboard.press("Enter")
+
+        await ws_manager.send_status(session_id, platform_key, "typing", "Waiting for reply…")
+        response = await ai.wait_for_response(timeout=120)
+
+        # Return only the new portion (last response block)
+        active_sessions[session_id]["responses"][platform_key] = response
+        await ws_manager.send_status(session_id, platform_key, "done", "Done", response)
+
+    except Exception as e:
+        err = str(e)
+        active_sessions[session_id]["responses"][platform_key] = f"[Error: {err}]"
+        await ws_manager.send_status(session_id, platform_key, "error", err)
 
 
 @app.get("/api/history")

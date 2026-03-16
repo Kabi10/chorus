@@ -212,6 +212,16 @@ header .spacer{flex:1}
 
   <!-- ── RIGHT PANEL ── -->
   <div id="right-panel">
+    <!-- Follow-up bar — shown after first results arrive -->
+    <div id="followup-bar" style="display:none;padding:10px 20px;background:var(--sur);border-bottom:1px solid var(--border);gap:8px;align-items:center;flex-shrink:0">
+      <div style="font-size:11px;color:var(--dim);white-space:nowrap">↩ Follow up</div>
+      <input id="followup-input" type="text" placeholder="Ask a follow-up question to all AIs in the same conversation…"
+        style="flex:1;background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-family:inherit;font-size:13px;padding:7px 12px;outline:none;transition:border .2s"
+        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+        onkeydown="if(event.key==='Enter')sendFollowUp()"/>
+      <button onclick="sendFollowUp()" style="background:var(--accent);border:none;border-radius:var(--rs);color:#fff;font-family:inherit;font-size:13px;padding:7px 16px;cursor:pointer;white-space:nowrap;transition:background .15s" onmouseover="this.style.background='var(--acch)'" onmouseout="this.style.background='var(--accent)'">Send</button>
+    </div>
+
     <div id="view-toggle" style="display:none">
       <button class="view-btn active" onclick="switchView('tree',this)">🌳 Tree</button>
       <button class="view-btn" onclick="switchView('cards',this)">📋 Cards</button>
@@ -504,6 +514,7 @@ function updateProgressCard(platform, status, message, response){
 // ── Views ──────────────────────────────────────────────────────────
 function showResultViews(){
   document.getElementById('welcome').style.display='none';
+  document.getElementById('followup-bar').style.display='flex';
   document.getElementById('view-toggle').style.display='flex';
   document.getElementById('tree-view').style.display='flex';
   document.getElementById('cards-view').style.display='none';
@@ -513,12 +524,56 @@ function showResultViews(){
 }
 
 function hideResultViews(){
+  document.getElementById('followup-bar').style.display='none';
   document.getElementById('view-toggle').style.display='none';
   document.getElementById('tree-view').style.display='none';
   document.getElementById('cards-view').style.display='none';
   document.getElementById('consensus-view').style.display='none';
   document.getElementById('diff-view').style.display='none';
   document.getElementById('welcome').style.display='flex';
+}
+
+// ── Follow-up ──────────────────────────────────────────────────────
+async function sendFollowUp(){
+  const prompt = document.getElementById('followup-input').value.trim();
+  if(!prompt){ toast('Enter a follow-up question'); return; }
+  if(!currentSession){ toast('No active session'); return; }
+
+  document.getElementById('followup-input').value = '';
+  document.getElementById('send-btn').disabled = true;
+
+  // Show progress again
+  const progArea = document.getElementById('progress-area');
+  const progCards = document.getElementById('progress-cards');
+  progArea.style.display = 'block';
+  progCards.innerHTML = '';
+
+  const activePlatforms = Object.keys(currentResponses);
+  activePlatforms.forEach(pk => {
+    const p = platforms[pk]||{icon:'🤖',name:pk};
+    const card = document.createElement('div');
+    card.className = 'prog-card';
+    card.id = `prog-${pk}`;
+    card.innerHTML = `<span class="prog-icon">${p.icon}</span>
+      <span class="prog-name">${p.name}</span>
+      <span class="prog-msg" id="prog-msg-${pk}">Queued</span>
+      <div class="prog-spinner" id="prog-spin-${pk}"></div>`;
+    progCards.appendChild(card);
+  });
+
+  try{
+    const res  = await fetch(`${API}/api/sessions/${currentSession}/followup`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({prompt})
+    });
+    const data = await res.json();
+    currentSession = data.session_id;
+    toast('Follow-up sent to all AIs…');
+  } catch(e){
+    toast('Follow-up failed: '+e.message,'err');
+    document.getElementById('send-btn').disabled = false;
+  }
 }
 
 function switchView(view, btn){

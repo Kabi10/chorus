@@ -1,64 +1,56 @@
 import asyncio
-from urllib.parse import quote
 from .base import BaseAI
 
 
 class Gemini(BaseAI):
-    name  = "Gemini"
-    url   = "https://gemini.google.com/app"
-    color = "#4285F4"
-    icon  = "🌀"
+    name         = "Gemini"
+    url          = "https://gemini.google.com/app"
+    color        = "#4285F4"
+    icon         = "🌀"
+    platform_key = "gemini"
 
     async def submit_prompt(self, prompt: str) -> None:
-        encoded = quote(prompt)
-        await self.page.goto(f"{self.url}?q={encoded}", wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(2)
+        await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)
+        await asyncio.sleep(3)
+        await self.assert_authenticated()
 
-        # If URL param didn't auto-submit, find the input and submit manually
         try:
-            # Check if response is already being generated
-            await self.page.wait_for_selector(
-                '[data-response-index], .response-content, model-response',
-                timeout=5000
-            )
-        except Exception:
-            # Need to type and submit manually
-            try:
-                input_sel = 'rich-textarea div[contenteditable="true"], textarea[placeholder], .ql-editor'
-                el = await self.page.wait_for_selector(input_sel, timeout=10000)
-                await el.click()
-                await self.page.keyboard.type(prompt, delay=15)
-                await asyncio.sleep(0.5)
-                await self.page.keyboard.press("Enter")
-            except Exception as e:
-                raise RuntimeError(f"Gemini: could not submit prompt — {e}")
+            el = await self.page.wait_for_selector(self._input_sel(), timeout=12000)
+            await el.click()
+            tag = await el.evaluate("el => el.tagName.toLowerCase()")
+            if tag == "textarea":
+                await el.fill(prompt)
+            else:
+                await self.page.keyboard.type(prompt, delay=10)
+            await asyncio.sleep(0.5)
+
+            send_sel = self._send_sel()
+            if send_sel:
+                try:
+                    btn = await self.page.wait_for_selector(send_sel, timeout=3000)
+                    await btn.click()
+                    return
+                except Exception:
+                    pass
+            await self.page.keyboard.press("Enter")
+        except Exception as e:
+            raise RuntimeError(f"Gemini: could not submit — {e}")
 
     async def wait_for_response(self, timeout: int = 90) -> str:
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
         deadline = asyncio.get_event_loop().time() + timeout
-
-        response_sel = "model-response .markdown, .response-content .markdown, " \
-                       "[data-response-index] p, model-response p"
-
         last_text = ""
         stable_since = asyncio.get_event_loop().time()
-        stable_needed = 3.0
+        stable_needed = 3.5
 
         while asyncio.get_event_loop().time() < deadline:
             try:
-                elements = await self.page.query_selector_all(response_sel)
-                if elements:
-                    texts = []
-                    for el in elements[-1:]:  # last response block
-                        t = await el.text_content()
-                        if t:
-                            texts.append(t.strip())
-                    current = "\n".join(texts)
-                    if current and current != last_text:
-                        last_text = current
-                        stable_since = asyncio.get_event_loop().time()
-                    elif current and (asyncio.get_event_loop().time() - stable_since) > stable_needed:
-                        return current
+                current = await self._collect_blocks()
+                if current != last_text:
+                    last_text = current
+                    stable_since = asyncio.get_event_loop().time()
+                elif current and (asyncio.get_event_loop().time() - stable_since) > stable_needed:
+                    return current
             except Exception:
                 pass
             await asyncio.sleep(0.8)

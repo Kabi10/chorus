@@ -3,10 +3,11 @@ from .base import BaseAI
 
 
 class Grok(BaseAI):
-    name  = "Grok"
-    url   = "https://x.com/i/grok"
-    color = "#1d9bf0"
-    icon  = "✕"
+    name         = "Grok"
+    url          = "https://x.com/i/grok"
+    color        = "#1d9bf0"
+    icon         = "✕"
+    platform_key = "grok"
 
     async def submit_prompt(self, prompt: str) -> None:
         await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)

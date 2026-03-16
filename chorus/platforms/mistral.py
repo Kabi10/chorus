@@ -3,10 +3,11 @@ from .base import BaseAI
 
 
 class Mistral(BaseAI):
-    name  = "Mistral"
-    url   = "https://chat.mistral.ai"
-    color = "#ff7000"
-    icon  = "🔶"
+    name         = "Mistral"
+    url          = "https://chat.mistral.ai"
+    color        = "#ff7000"
+    icon         = "🔶"
+    platform_key = "mistral"
 
     async def submit_prompt(self, prompt: str) -> None:
         await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)

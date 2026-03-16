@@ -3,10 +3,11 @@ from .base import BaseAI
 
 
 class Copilot(BaseAI):
-    name  = "Copilot"
-    url   = "https://copilot.microsoft.com"
-    color = "#0078d4"
-    icon  = "🪟"
+    name         = "Copilot"
+    url          = "https://copilot.microsoft.com"
+    color        = "#0078d4"
+    icon         = "🪟"
+    platform_key = "copilot"
 
     async def submit_prompt(self, prompt: str) -> None:
         await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)
