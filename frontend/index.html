@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Chorus</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+:root{
+  --bg:#0b0b10;--sur:#13131c;--s2:#1a1a26;--s3:#22222f;
+  --border:#2a2a3e;--border2:#383850;--text:#e0e0ec;
+  --dim:#7777a0;--dimmer:#444466;--accent:#7c3aed;--acch:#9d5cf6;
+  --r:10px;--rs:6px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;min-height:100vh;display:flex;flex-direction:column}
+
+/* ── Header ── */
+header{background:var(--sur);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+.logo{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.logo span{color:var(--accent)}
+.logo-sub{font-size:12px;color:var(--dim);margin-left:2px}
+header .spacer{flex:1}
+.ws-status{font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border)}
+.ws-status.connected{color:#22c55e;border-color:#166534}
+.ws-status.disconnected{color:#ef4444;border-color:#7f1d1d}
+
+/* ── Layout ── */
+#app{flex:1;display:flex;overflow:hidden}
+#left-panel{width:340px;min-width:340px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;background:var(--sur)}
+#right-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── Prompt area ── */
+#prompt-area{padding:20px}
+#prompt-area h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+#prompt-input{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:inherit;font-size:13px;padding:12px;outline:none;resize:vertical;min-height:110px;line-height:1.6;transition:border .2s}
+#prompt-input:focus{border-color:var(--accent)}
+#prompt-input::placeholder{color:var(--dim)}
+
+/* ── Platform selector ── */
+#platform-area{padding:0 20px 16px}
+#platform-area h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.platform-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.plat-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font-size:12px;font-family:inherit;transition:all .15s;user-select:none}
+.plat-btn:hover{border-color:var(--border2);color:var(--text)}
+.plat-btn.selected{border-color:var(--accent);color:var(--text);background:var(--s3)}
+.plat-btn .plat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.plat-check{margin-left:auto;font-size:13px}
+
+/* ── Send btn ── */
+#send-area{padding:0 20px 20px}
+#send-btn{width:100%;padding:11px;background:var(--accent);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s;letter-spacing:.2px}
+#send-btn:hover{background:var(--acch)}
+#send-btn:disabled{background:var(--s3);color:var(--dim);cursor:not-allowed}
+
+/* ── Progress cards ── */
+#progress-area{padding:20px;border-top:1px solid var(--border)}
+#progress-area h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.prog-card{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);margin-bottom:6px;font-size:12px;transition:border-color .2s}
+.prog-card.done{border-color:#166534}
+.prog-card.error{border-color:#7f1d1d}
+.prog-card.typing{border-color:var(--accent)}
+.prog-icon{font-size:16px}
+.prog-name{font-weight:500}
+.prog-msg{color:var(--dim);margin-left:auto;font-size:11px}
+.prog-spinner{width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+.prog-done{color:#22c55e;font-size:14px}
+.prog-err{color:#ef4444;font-size:14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── History ── */
+#history-area{padding:0 20px 20px;border-top:1px solid var(--border)}
+#history-area h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px}
+.hist-item{padding:6px 8px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);font-size:11px;color:var(--dim);cursor:pointer;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all .15s}
+.hist-item:hover{background:var(--s3);color:var(--text)}
+
+/* ── Right panel: view toggle ── */
+#view-toggle{display:flex;gap:6px;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--sur);flex-shrink:0}
+.view-btn{padding:5px 14px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);font-family:inherit;font-size:12px;cursor:pointer;transition:all .15s}
+.view-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ── Tree view ── */
+#tree-view{flex:1;overflow:hidden;position:relative}
+#tree-svg{width:100%;height:100%}
+
+/* D3 tree styles */
+.node circle{stroke-width:2px;cursor:pointer}
+.node text{font-family:'Inter',sans-serif;font-size:12px;fill:var(--text);pointer-events:none}
+.node .platform-label{font-weight:600;font-size:13px}
+.node .response-preview{font-size:10px;fill:#7777a0}
+.link{fill:none;stroke:#2a2a3e;stroke-width:1.5px}
+.link.animated{stroke-dasharray:5,3;animation:dash 1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-8}}
+
+/* ── Cards view ── */
+#cards-view{flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.resp-card{background:var(--sur);border:1px solid var(--border);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:10px}
+.resp-card-hdr{display:flex;align-items:center;gap:10px}
+.resp-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.resp-name{font-size:14px;font-weight:600}
+.resp-body{font-size:12px;color:var(--dim);line-height:1.7;max-height:260px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+
+/* ── Consensus view ── */
+#consensus-view{flex:1;overflow-y:auto;padding:20px}
+.consensus-banner{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px;text-align:center}
+.consensus-banner h3{font-size:15px;font-weight:600;margin-bottom:4px}
+.consensus-banner p{font-size:12px;color:var(--dim)}
+.cons-section{margin-bottom:20px}
+.cons-section-title{font-size:12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.cons-item{background:var(--sur);border:1px solid var(--border);border-radius:var(--rs);padding:12px;margin-bottom:8px}
+.cons-item-text{font-size:13px;line-height:1.6;margin-bottom:8px}
+.cons-agree{display:flex;gap:6px;flex-wrap:wrap}
+.agree-badge{font-size:11px;padding:2px 7px;border-radius:20px;border:1px solid var(--border);background:var(--s2);color:var(--dim)}
+
+/* ── Empty / waiting ── */
+#welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--dim);gap:10px;padding:40px;text-align:center}
+#welcome h2{font-size:20px;color:var(--text);font-weight:600}
+#welcome p{font-size:13px;line-height:1.7;max-width:400px}
+
+/* scrollbar */
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:16px;right:16px;background:var(--s3);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 14px;font-size:12px;z-index:200;opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none}
+#toast.show{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">Cho<span>rus</span> <span class="logo-sub">multi-AI consultation</span></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="ws-status disconnected" id="ws-status">● Disconnected</div>
+</header>
+
+<div id="app">
+  <!-- ── LEFT PANEL ── -->
+  <div id="left-panel">
+    <div id="prompt-area">
+      <h2>Your Prompt</h2>
+      <textarea id="prompt-input" placeholder="Ask something… e.g. 'What are the top 5 features I should build for a developer project manager?'"></textarea>
+    </div>
+
+    <div id="platform-area">
+      <h2>Send to</h2>
+      <div class="platform-grid" id="platform-grid">
+        <!-- populated by JS -->
+      </div>
+    </div>
+
+    <div id="send-area">
+      <button id="send-btn" onclick="sendQuery()">⚡ Send to All AIs</button>
+    </div>
+
+    <div id="progress-area" style="display:none">
+      <h2>Progress</h2>
+      <div id="progress-cards"></div>
+    </div>
+
+    <div id="history-area">
+      <h2>Recent</h2>
+      <div id="history-list"></div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT PANEL ── -->
+  <div id="right-panel">
+    <div id="view-toggle" style="display:none">
+      <button class="view-btn active" onclick="switchView('tree',this)">🌳 Tree</button>
+      <button class="view-btn" onclick="switchView('cards',this)">📋 Cards</button>
+      <button class="view-btn" onclick="switchView('consensus',this)">🎯 Consensus</button>
+    </div>
+
+    <div id="tree-view" style="display:none">
+      <svg id="tree-svg"></svg>
+    </div>
+
+    <div id="cards-view" style="display:none"></div>
+    <div id="consensus-view" style="display:none"></div>
+
+    <div id="welcome">
+      <div style="font-size:48px">🎵</div>
+      <h2>Ask every AI at once</h2>
+      <p>Write your prompt, select which AI platforms to consult, and hit Send. Chorus submits to all of them simultaneously — no API keys needed.</p>
+      <p style="font-size:11px;margin-top:8px;color:var(--dimmer)">First run: you'll be prompted to log in to each platform once. After that, sessions are saved.</p>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = '';
+let ws;
+let platforms = {};
+let selectedPlatforms = new Set();
+let currentSession = null;
+let sessionHistory = [];
+let currentResponses = {};
+let currentPrompt = '';
+
+const COLORS = {
+  gemini:     '#4285F4',
+  chatgpt:    '#10a37f',
+  claude:     '#d97706',
+  perplexity: '#20b8cd',
+};
+
+// ── WebSocket ──────────────────────────────────────────────────────
+function connectWS(){
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => {
+    document.getElementById('ws-status').textContent='● Connected';
+    document.getElementById('ws-status').className='ws-status connected';
+  };
+  ws.onclose = () => {
+    document.getElementById('ws-status').textContent='● Disconnected';
+    document.getElementById('ws-status').className='ws-status disconnected';
+    setTimeout(connectWS, 4000);
+  };
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    if(msg.type === 'platform_update') handlePlatformUpdate(msg);
+    if(msg.type === 'session_complete') handleSessionComplete(msg);
+  };
+}
+
+function handlePlatformUpdate(msg){
+  if(msg.session_id !== currentSession) return;
+  updateProgressCard(msg.platform, msg.status, msg.message, msg.response);
+  if(msg.response) {
+    currentResponses[msg.platform] = msg.response;
+  }
+}
+
+function handleSessionComplete(msg){
+  if(msg.session_id !== currentSession) return;
+  currentResponses = msg.responses;
+  currentPrompt    = msg.prompt;
+  document.getElementById('send-btn').disabled = false;
+  document.getElementById('send-btn').textContent = '⚡ Send to All AIs';
+  showResultViews();
+  renderTree(msg.prompt, msg.responses);
+  renderCards(msg.responses);
+  renderConsensus(msg.prompt, msg.responses);
+  sessionHistory.unshift({prompt: msg.prompt, responses: msg.responses, id: msg.session_id});
+  renderHistory();
+  toast('All responses collected!');
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+async function init(){
+  try{
+    const res = await fetch(`${API}/api/platforms`);
+    platforms = await res.json();
+    renderPlatforms();
+  } catch(e){ toast('Server not reachable. Is Chorus running?'); }
+  connectWS();
+  renderHistory();
+}
+
+function renderPlatforms(){
+  const grid = document.getElementById('platform-grid');
+  grid.innerHTML = '';
+  for(const [key, p] of Object.entries(platforms)){
+    selectedPlatforms.add(key);
+    const btn = document.createElement('button');
+    btn.className = 'plat-btn selected';
+    btn.dataset.platform = key;
+    btn.innerHTML = `<span class="plat-dot" style="background:${p.color}"></span>${p.icon} ${p.name}<span class="plat-check">✓</span>`;
+    btn.onclick = () => togglePlatform(key, btn);
+    grid.appendChild(btn);
+  }
+}
+
+function togglePlatform(key, btn){
+  if(selectedPlatforms.has(key)){
+    if(selectedPlatforms.size <= 1) return;
+    selectedPlatforms.delete(key);
+    btn.classList.remove('selected');
+    btn.querySelector('.plat-check').textContent='';
+  } else {
+    selectedPlatforms.add(key);
+    btn.classList.add('selected');
+    btn.querySelector('.plat-check').textContent='✓';
+  }
+}
+
+// ── Send ───────────────────────────────────────────────────────────
+async function sendQuery(){
+  const prompt = document.getElementById('prompt-input').value.trim();
+  if(!prompt){ toast('Please enter a prompt'); return; }
+  if(!selectedPlatforms.size){ toast('Select at least one AI'); return; }
+
+  currentResponses = {};
+  currentPrompt = prompt;
+
+  document.getElementById('send-btn').disabled = true;
+  document.getElementById('send-btn').textContent = '⏳ Sending…';
+
+  const progArea = document.getElementById('progress-area');
+  progArea.style.display = 'block';
+  const progCards = document.getElementById('progress-cards');
+  progCards.innerHTML = '';
+
+  selectedPlatforms.forEach(pk => {
+    const p = platforms[pk];
+    if(!p) return;
+    const card = document.createElement('div');
+    card.className = 'prog-card';
+    card.id = `prog-${pk}`;
+    card.innerHTML = `<span class="prog-icon">${p.icon}</span>
+      <span class="prog-name">${p.name}</span>
+      <span class="prog-msg" id="prog-msg-${pk}">Queued</span>
+      <div class="prog-spinner" id="prog-spin-${pk}"></div>`;
+    progCards.appendChild(card);
+  });
+
+  hideResultViews();
+
+  try{
+    const res = await fetch(`${API}/api/query`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        prompt,
+        platforms: [...selectedPlatforms],
+      })
+    });
+    const data = await res.json();
+    currentSession = data.session_id;
+  } catch(e){
+    toast('Failed to start query. Is Chorus running?');
+    document.getElementById('send-btn').disabled = false;
+    document.getElementById('send-btn').textContent = '⚡ Send to All AIs';
+  }
+}
+
+function updateProgressCard(platform, status, message, response){
+  const card = document.getElementById(`prog-${platform}`);
+  const msg  = document.getElementById(`prog-msg-${platform}`);
+  const spin = document.getElementById(`prog-spin-${platform}`);
+  if(!card) return;
+
+  card.className = `prog-card ${status}`;
+  if(msg) msg.textContent = message || status;
+
+  if(spin){
+    if(status === 'done'){
+      spin.outerHTML = `<span class="prog-done">✓</span>`;
+    } else if(status === 'error'){
+      spin.outerHTML = `<span class="prog-err">✕</span>`;
+    }
+  }
+}
+
+// ── Views ──────────────────────────────────────────────────────────
+function showResultViews(){
+  document.getElementById('welcome').style.display='none';
+  document.getElementById('view-toggle').style.display='flex';
+  document.getElementById('tree-view').style.display='flex';
+  document.getElementById('cards-view').style.display='none';
+  document.getElementById('consensus-view').style.display='none';
+  document.querySelectorAll('.view-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+}
+
+function hideResultViews(){
+  document.getElementById('view-toggle').style.display='none';
+  document.getElementById('tree-view').style.display='none';
+  document.getElementById('cards-view').style.display='none';
+  document.getElementById('consensus-view').style.display='none';
+  document.getElementById('welcome').style.display='flex';
+}
+
+function switchView(view, btn){
+  ['tree','cards','consensus'].forEach(v=>{
+    document.getElementById(`${v}-view`).style.display = v===view?(v==='tree'?'flex':'block'):'none';
+  });
+  document.querySelectorAll('.view-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(view==='tree' && Object.keys(currentResponses).length) renderTree(currentPrompt, currentResponses);
+}
+
+// ── D3 Tree ────────────────────────────────────────────────────────
+function renderTree(prompt, responses){
+  const svg = document.getElementById('tree-svg');
+  const W = svg.clientWidth || 800;
+  const H = svg.clientHeight || 600;
+  d3.select('#tree-svg').selectAll('*').remove();
+
+  const root = {
+    name: prompt.length > 60 ? prompt.slice(0,60)+'…' : prompt,
+    children: Object.entries(responses).map(([key, resp]) => {
+      const p = platforms[key] || {name: key, color:'#888', icon:'🤖'};
+      const preview = (resp||'').replace(/\n+/g,' ').slice(0,120) + (resp.length>120?'…':'');
+      return {
+        name:    p.name,
+        icon:    p.icon,
+        color:   p.color,
+        preview: preview,
+        full:    resp,
+        key:     key,
+      };
+    })
+  };
+
+  const tree   = d3.tree().size([H - 80, W/2 - 80]);
+  const hier   = d3.hierarchy(root);
+  const treeData = tree(hier);
+
+  const g = d3.select('#tree-svg').append('g').attr('transform','translate(40,40)');
+
+  // Links
+  g.selectAll('.link')
+    .data(treeData.links())
+    .enter().append('path')
+    .attr('class','link')
+    .attr('d', d3.linkHorizontal().x(d=>d.y).y(d=>d.x))
+    .attr('stroke', d => d.target.data.color || '#2a2a3e')
+    .attr('stroke-opacity', .5);
+
+  // Nodes
+  const node = g.selectAll('.node')
+    .data(treeData.descendants())
+    .enter().append('g')
+    .attr('class','node')
+    .attr('transform', d=>`translate(${d.y},${d.x})`);
+
+  // Root node
+  node.filter(d=>!d.parent)
+    .append('circle').attr('r',18)
+    .attr('fill','#7c3aed').attr('stroke','#9d5cf6');
+
+  node.filter(d=>!d.parent)
+    .append('text').attr('dy','-.5em').attr('text-anchor','middle')
+    .attr('font-size','11px').attr('fill','#e0e0ec')
+    .text(d => d.data.name);
+
+  // Platform nodes
+  node.filter(d=>d.depth===1)
+    .append('circle').attr('r',22)
+    .attr('fill', d=>d.data.color+'33')
+    .attr('stroke', d=>d.data.color)
+    .attr('stroke-width',2)
+    .style('cursor','pointer')
+    .on('click', (e, d) => showResponseDetail(d.data));
+
+  node.filter(d=>d.depth===1)
+    .append('text').attr('dy','-1.8em').attr('text-anchor','middle')
+    .attr('class','platform-label').attr('fill',d=>d.data.color)
+    .text(d => `${d.data.icon} ${d.data.name}`);
+
+  node.filter(d=>d.depth===1)
+    .append('foreignObject')
+    .attr('x', 28).attr('y', -30)
+    .attr('width', Math.min(W/3, 260)).attr('height', 80)
+    .append('xhtml:div')
+    .style('font-size','10px').style('color','#7777a0')
+    .style('font-family','Inter,sans-serif').style('line-height','1.4')
+    .style('word-break','break-word')
+    .text(d => d.data.preview);
+
+  // Zoom
+  d3.select('#tree-svg').call(
+    d3.zoom().scaleExtent([.3,2]).on('zoom', e => g.attr('transform', e.transform))
+  );
+}
+
+function showResponseDetail(data){
+  if(!data.full) return;
+  const existing = document.getElementById('resp-detail-modal');
+  if(existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'resp-detail-modal';
+  modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100`;
+  modal.innerHTML = `
+    <div style="background:#13131c;border:1px solid #383850;border-radius:14px;padding:22px;width:600px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:20px">${data.icon}</span>
+        <strong style="font-size:15px;color:${data.color}">${data.name}</strong>
+        <button onclick="this.closest('#resp-detail-modal').remove()" style="margin-left:auto;background:#1a1a26;border:1px solid #2a2a3e;border-radius:5px;color:#7777a0;cursor:pointer;padding:3px 10px;font-size:15px">✕</button>
+      </div>
+      <div style="overflow-y:auto;flex:1;font-size:13px;line-height:1.7;color:#e0e0ec;white-space:pre-wrap;word-break:break-word;background:#1a1a26;border-radius:8px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:12px">${esc(data.full)}</div>
+      <button onclick="navigator.clipboard.writeText(${JSON.stringify(data.full)});toast('Copied!')" style="background:#7c3aed;border:none;border-radius:6px;color:#fff;padding:8px;font-family:inherit;cursor:pointer;font-size:13px">Copy Response</button>
+    </div>`;
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+// ── Cards view ─────────────────────────────────────────────────────
+function renderCards(responses){
+  const view = document.getElementById('cards-view');
+  view.innerHTML = '';
+  for(const [key, resp] of Object.entries(responses)){
+    const p = platforms[key]||{name:key,color:'#888',icon:'🤖'};
+    const card = document.createElement('div');
+    card.className='resp-card';
+    card.innerHTML=`
+      <div class="resp-card-hdr">
+        <span class="resp-dot" style="background:${p.color}"></span>
+        <span style="font-size:18px">${p.icon}</span>
+        <span class="resp-name">${p.name}</span>
+        <button onclick="navigator.clipboard.writeText(${JSON.stringify(resp)});toast('Copied!')"
+          style="margin-left:auto;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--dim);cursor:pointer;padding:3px 8px;font-size:11px">Copy</button>
+      </div>
+      <div class="resp-body">${esc(resp)}</div>`;
+    view.appendChild(card);
+  }
+}
+
+// ── Consensus ──────────────────────────────────────────────────────
+function renderConsensus(prompt, responses){
+  const view = document.getElementById('consensus-view');
+  const keys = Object.keys(responses);
+  if(!keys.length){ view.innerHTML='<p style="color:var(--dim);padding:20px">No responses yet.</p>'; return; }
+
+  // Simple keyword extraction
+  const stopwords = new Set(['the','a','an','is','are','was','were','be','been','being','have',
+    'has','had','do','does','did','will','would','could','should','may','might','shall','can',
+    'this','that','these','those','and','or','but','in','on','at','to','for','of','with','by',
+    'from','it','its','we','you','they','he','she','i','me','my','your','our','their','all',
+    'as','if','so','when','then','also','just','not','no','more','than','other','some','any',
+    'what','which','who','how','why','where','there','here','about','into','through','during']);
+
+  function extractKeywords(text){
+    return text.toLowerCase().replace(/[^a-z\s]/g,'').split(/\s+/)
+      .filter(w=>w.length>3&&!stopwords.has(w));
+  }
+
+  function findCommonThemes(responses){
+    const allWords = {};
+    for(const [, resp] of Object.entries(responses)){
+      const words = new Set(extractKeywords(resp));
+      words.forEach(w=>{ allWords[w]=(allWords[w]||0)+1; });
+    }
+    return Object.entries(allWords)
+      .filter(([,c])=>c>=Math.max(2, Math.floor(keys.length*.5)))
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,12)
+      .map(([w,c])=>({word:w,count:c,pct:Math.round(c/keys.length*100)}));
+  }
+
+  const themes = findCommonThemes(responses);
+  const agreePct = themes.length ? Math.round(themes.filter(t=>t.count===keys.length).length/themes.length*100) : 0;
+
+  let html = `
+    <div class="consensus-banner">
+      <h3>🎯 Consensus Report</h3>
+      <p>${keys.length} AIs consulted · ${themes.length} shared themes found · ~${agreePct}% full agreement</p>
+    </div>`;
+
+  if(themes.length){
+    const full = themes.filter(t=>t.count===keys.length);
+    const majority = themes.filter(t=>t.count<keys.length&&t.count>1);
+
+    if(full.length){
+      html += `<div class="cons-section">
+        <div class="cons-section-title">✅ All AIs agree (${keys.length}/${keys.length})</div>`;
+      full.forEach(t=>{
+        const agreeing = keys.filter(k=>extractKeywords(responses[k]).includes(t.word));
+        html+=`<div class="cons-item">
+          <div class="cons-item-text">Mentioned: <strong>${t.word}</strong></div>
+          <div class="cons-agree">${agreeing.map(k=>{const p=platforms[k]||{icon:'🤖',name:k};return`<span class="agree-badge">${p.icon} ${p.name}</span>`;}).join('')}</div>
+        </div>`;
+      });
+      html+='</div>';
+    }
+
+    if(majority.length){
+      html += `<div class="cons-section">
+        <div class="cons-section-title">⚡ Majority agree</div>`;
+      majority.forEach(t=>{
+        const agreeing = keys.filter(k=>extractKeywords(responses[k]).includes(t.word));
+        html+=`<div class="cons-item">
+          <div class="cons-item-text">Mentioned: <strong>${t.word}</strong> (${t.count}/${keys.length} AIs)</div>
+          <div class="cons-agree">${agreeing.map(k=>{const p=platforms[k]||{icon:'🤖',name:k};return`<span class="agree-badge">${p.icon} ${p.name}</span>`;}).join('')}</div>
+        </div>`;
+      });
+      html+='</div>';
+    }
+  } else {
+    html += `<p style="color:var(--dim);font-size:13px;padding:10px 0">Not enough shared language found across responses for automatic consensus. Try the Cards view to compare manually.</p>`;
+  }
+
+  view.innerHTML = html;
+}
+
+// ── History ────────────────────────────────────────────────────────
+function renderHistory(){
+  const list = document.getElementById('history-list');
+  if(!sessionHistory.length){ list.innerHTML='<div style="font-size:12px;color:var(--dimmer)">No history yet</div>'; return; }
+  list.innerHTML = sessionHistory.slice(0,8).map((s,i)=>`
+    <div class="hist-item" onclick="loadHistoryItem(${i})" title="${esc(s.prompt)}">
+      ${esc(s.prompt.slice(0,60))}${s.prompt.length>60?'…':''}
+    </div>`).join('');
+}
+
+function loadHistoryItem(i){
+  const s = sessionHistory[i];
+  if(!s) return;
+  currentResponses = s.responses;
+  currentPrompt    = s.prompt;
+  document.getElementById('prompt-input').value = s.prompt;
+  showResultViews();
+  renderTree(s.prompt, s.responses);
+  renderCards(s.responses);
+  renderConsensus(s.prompt, s.responses);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='show';
+  setTimeout(()=>t.className='',2500);
+}
+function esc(s){
+  if(!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+init();
+</script>
+</body>
+</html>
