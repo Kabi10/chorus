@@ -43,11 +43,12 @@ header .spacer{flex:1}
 #platform-area{padding:0 20px 16px}
 #platform-area h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
 .platform-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.plat-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font-size:12px;font-family:inherit;transition:all .15s;user-select:none}
+.plat-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font-size:12px;font-family:inherit;transition:all .15s;user-select:none;width:100%}
 .plat-btn:hover{border-color:var(--border2);color:var(--text)}
 .plat-btn.selected{border-color:var(--accent);color:var(--text);background:var(--s3)}
 .plat-btn .plat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.plat-check{margin-left:auto;font-size:13px}
+.plat-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;text-align:left}
+.plat-check{flex-shrink:0;font-size:13px}
 
 /* ── Send btn ── */
 #send-area{padding:0 20px 20px}
@@ -300,7 +301,7 @@ function handlePlatformUpdate(msg){
   }
 }
 
-function handleSessionComplete(msg){
+async function handleSessionComplete(msg){
   if(msg.session_id !== currentSession) return;
   currentResponses = msg.responses;
   currentPrompt    = msg.prompt;
@@ -356,7 +357,7 @@ function renderPlatforms(){
     btn.className = 'plat-btn selected';
     btn.dataset.platform = key;
     btn.style.paddingRight = '28px'; // room for settings icon
-    btn.innerHTML = `<span class="plat-dot" style="background:${p.color}"></span>${p.icon} ${p.name}<span class="plat-check">✓</span>`;
+    btn.innerHTML = `<span class="plat-dot" style="background:${p.color}"></span><span class="plat-name">${p.icon} ${p.name}</span><span class="plat-check">✓</span>`;
     btn.onclick = () => togglePlatform(key, btn);
 
     // Profile switcher button
@@ -1189,12 +1190,12 @@ init();
              Re-login
            </button>`;
       grid.insertAdjacentHTML('beforeend', `
-        <div style="padding:14px;border:1px solid var(--border,#2a2a2a);border-radius:9px;">
-          <div style="font-size:.88rem;font-weight:500;margin-bottom:4px;">
-            <span style="color:${(pm.color||'#888')};margin-right:6px;">${pm.icon||''}</span>
-            ${pm.name || key}
+        <div style="padding:12px 14px;border:1px solid var(--border,#2a2a2a);border-radius:9px;display:flex;flex-direction:column;gap:10px;">
+          <div style="font-size:.88rem;font-weight:500;display:flex;align-items:center;gap:7px;">
+            <span style="color:${(pm.color||'#888')};font-size:1.1em;flex-shrink:0;">${pm.icon||''}</span>
+            <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${pm.name || key}</span>
           </div>
-          ${badge}${btn}
+          <div style="display:flex;align-items:center;gap:8px;">${badge}${btn}</div>
         </div>`);
     }
     const doneBtn = document.getElementById('ob-done-btn');
