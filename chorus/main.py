@@ -82,8 +82,8 @@ PLATFORMS = {
     "mistral":    Mistral,
 }
 
-_ONBOARDING_FILE: Path     = Path.home() / ".chorus" / "onboarding.json"
-_onboarding_ctxs: dict     = {}  # platform -> open BrowserContext
+_ONBOARDING_FILE: Path   = Path.home() / ".chorus" / "onboarding.json"
+_onboarding_pages: dict  = {}  # platform -> Page (in shared context)
 
 PLATFORM_META = {
     "gemini":     {"name": "Gemini",     "color": "#4285F4", "icon": "🌀"},
@@ -141,13 +141,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     await browser_manager.stop()
-    # Clean up any open onboarding contexts
-    for ctx in list(_onboarding_ctxs.values()):
-        try:
-            await ctx.close()
-        except Exception:
-            pass
-    _onboarding_ctxs.clear()
+    _onboarding_pages.clear()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -665,22 +659,14 @@ def get_onboarding_state():
 
 @app.post("/api/onboarding/{platform}/open")
 async def onboarding_open(platform: str):
-    """Open a visible browser window for the user to log in."""
+    """Open a page in the shared Chrome profile for the user to log in."""
     if platform not in PLATFORMS:
         raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
     try:
-        profile_dir = Path.home() / ".chorus" / "profiles" / platform / "default"
-        profile_dir.mkdir(parents=True, exist_ok=True)
-        ctx = await browser_manager._playwright.chromium.launch_persistent_context(
-            user_data_dir=str(profile_dir),
-            headless=False,
-            args=["--disable-blink-features=AutomationControlled"],
-            viewport={"width": 1280, "height": 800},
-        )
-        _onboarding_ctxs[platform] = ctx
-        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+        page = await browser_manager.get_page(f"onboard_{platform}")
         platform_instance = PLATFORMS[platform](page)
         await page.goto(platform_instance.url, wait_until="domcontentloaded", timeout=20000)
+        _onboarding_pages[platform] = page
         return {"ok": True, "message": f"Browser opened for {platform}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -688,33 +674,23 @@ async def onboarding_open(platform: str):
 
 @app.get("/api/onboarding/{platform}/status")
 async def onboarding_status(platform: str):
-    """Poll authentication state. Saves profile data when authenticated."""
+    """Poll authentication state. Marks platform complete when logged in."""
     if platform not in PLATFORMS:
         raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
 
-    profile_dir = Path.home() / ".chorus" / "profiles" / platform / "default"
-    profile_exists = profile_dir.exists() and any(profile_dir.iterdir()) if profile_dir.exists() else False
-
-    ctx = _onboarding_ctxs.get(platform)
-    if ctx is None:
-        return {"authenticated": False, "profile_exists": profile_exists}
+    page = _onboarding_pages.get(platform)
+    if page is None or page.is_closed():
+        return {"authenticated": False, "profile_exists": True}
 
     try:
-        # Reuse existing page — the page the user logged in on
-        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         platform_instance = PLATFORMS[platform](page)
         authenticated = await platform_instance.is_authenticated()
-
         if authenticated:
-            # Close context — launch_persistent_context flushes session data to profile dir on close
-            await ctx.close()
-            _onboarding_ctxs.pop(platform, None)
+            _onboarding_pages.pop(platform, None)
             _onboarding.mark_completed(platform, _ONBOARDING_FILE)
-            profile_exists = True
-
-        return {"authenticated": authenticated, "profile_exists": profile_exists}
+        return {"authenticated": authenticated, "profile_exists": True}
     except Exception as e:
-        return {"authenticated": False, "profile_exists": profile_exists, "error": str(e)}
+        return {"authenticated": False, "profile_exists": True, "error": str(e)}
 
 
 @app.post("/api/onboarding/{platform}/skip")

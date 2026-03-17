@@ -1,60 +1,64 @@
 """
 Playwright browser session manager.
-Each platform gets its own persistent profile directory so login is saved.
+All platforms share one persistent Chrome profile at ~/.chorus/profile/
+so sessions stay fresh while the browser is running — no per-platform login needed.
 """
 from pathlib import Path
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import async_playwright, BrowserContext, Page
 
-PROFILES_DIR = Path.home() / ".chorus" / "profiles"
+PROFILE_DIR = Path.home() / ".chorus" / "profile"
 
 
 class BrowserManager:
     def __init__(self):
         self._playwright = None
-        self._browser: Browser | None = None
-        self._contexts: dict[str, BrowserContext] = {}
+        self._ctx: BrowserContext | None = None
+        self._pages: dict[str, Page] = {}
+
+    @property
+    def playwright(self):
+        return self._playwright
 
     async def start(self):
         self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
+        PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+        launch_args = dict(
+            user_data_dir=str(PROFILE_DIR),
             headless=False,
             args=["--disable-blink-features=AutomationControlled"],
+            viewport={"width": 1280, "height": 800},
         )
+        try:
+            # Prefer system Chrome — sessions persist and refresh like a real browser
+            self._ctx = await self._playwright.chromium.launch_persistent_context(
+                channel="chrome", **launch_args
+            )
+        except Exception:
+            # Fall back to bundled Chromium if Chrome isn't installed
+            self._ctx = await self._playwright.chromium.launch_persistent_context(
+                **launch_args
+            )
 
     async def stop(self):
-        for ctx in self._contexts.values():
-            await ctx.close()
-        if self._browser:
-            await self._browser.close()
+        if self._ctx:
+            await self._ctx.close()
         if self._playwright:
             await self._playwright.stop()
 
-    async def get_context(self, platform: str, profile: str = "default") -> BrowserContext:
-        key = f"{platform}:{profile}"
-        if key not in self._contexts:
-            profile_dir = PROFILES_DIR / platform / profile
-            profile_dir.mkdir(parents=True, exist_ok=True)
-            ctx = await self._playwright.chromium.launch_persistent_context(
-                user_data_dir=str(profile_dir),
-                headless=False,
-                args=["--disable-blink-features=AutomationControlled"],
-                viewport={"width": 1280, "height": 800},
-                no_viewport=False,
-            )
-            self._contexts[key] = ctx
-        return self._contexts[key]
+    async def get_context(self, platform: str = "default", profile: str = "default") -> BrowserContext:
+        """All platforms share one context (one Chrome profile)."""
+        return self._ctx
 
     async def get_page(self, platform: str, profile: str = "default") -> Page:
-        ctx = await self.get_context(platform, profile)
-        if ctx.pages:
-            return ctx.pages[0]
-        return await ctx.new_page()
+        key = f"{platform}:{profile}"
+        page = self._pages.get(key)
+        if page is None or page.is_closed():
+            page = await self._ctx.new_page()
+            self._pages[key] = page
+        return page
 
     def list_profiles(self, platform: str) -> list[str]:
-        d = PROFILES_DIR / platform
-        if not d.exists():
-            return ["default"]
-        return [p.name for p in d.iterdir() if p.is_dir()] or ["default"]
+        return ["default"]
 
 
 # Singleton
