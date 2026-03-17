@@ -2,7 +2,7 @@
 
 > Send one prompt to every major AI. See where they agree.
 
-![Chorus Logo](logo.png)
+![Chorus Dashboard](docs/screenshot.png)
 
 **Chorus** is a browser-native multi-AI consultation tool. Write one prompt, send it to ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, Mistral, and Copilot simultaneously — **no API keys required**. Uses your existing logged-in browser sessions and collects all responses into a D3 flowchart with consensus analysis, sentence-level diff, and Markdown export.
 
@@ -48,9 +48,11 @@
 | 🎯 **Consensus view** | Keyword agreement analysis — what all AIs agree on vs. split opinions |
 | 🔍 **Diff view** | Sentence-level diff — unique insights per AI highlighted in blue |
 | 🏷️ **Prompt templates** | 5 built-in templates to get started quickly |
-| 📂 **Persistent history** | All sessions saved to `chorus_history.json` — reload anytime |
+| 📂 **Persistent history** | All sessions saved to disk — reload anytime |
 | ↓ **Markdown export** | Download any session as a formatted `.md` file |
-| ⚙️ **Account switcher** | Multiple Google/platform accounts per AI, switch with one click |
+| ⚙️ **Account switcher** | Multiple accounts per platform, switch with one click |
+| 🧭 **Onboarding wizard** | First-run setup guides you through logging into each platform |
+| 🔁 **Error recovery** | Per-platform Retry and Re-login buttons — no full restart needed |
 
 ---
 
@@ -62,18 +64,18 @@ git clone https://github.com/Kabi10/chorus.git
 cd chorus
 
 # 2. Install Python dependencies
-pip install -r requirements.txt
+pip install -e .
 
 # 3. Install Playwright browser
 playwright install chromium
 
 # 4. Run
-python main.py
+chorus
 ```
 
 Open **http://localhost:4747**
 
-> **First run:** Chorus opens a browser window per selected AI. Log in once — sessions are saved in `chorus/profiles/` and reused automatically.
+> **First run:** Chorus walks you through an onboarding wizard to log in to each platform. Sessions are saved in `chorus/profiles/` and reused automatically.
 
 ---
 
@@ -95,7 +97,9 @@ Open **http://localhost:4747**
 | `GET` | `/api/platforms/{p}/profiles` | List saved profiles |
 | `POST` | `/api/platforms/{p}/profiles/{name}` | Create profile + open for login |
 | `POST` | `/api/query` | Start a query session |
+| `POST` | `/api/sessions/{id}/retry/{platform}` | Retry a failed platform |
 | `GET` | `/api/sessions/{id}` | Session status + responses |
+| `GET` | `/api/sessions/{id}/consensus` | Consensus analysis for a session |
 | `GET` | `/api/history` | Saved session history |
 | `DELETE` | `/api/history/{id}` | Remove a history item |
 | `GET` | `/api/export/{id}` | Download session as Markdown |
@@ -107,14 +111,15 @@ Open **http://localhost:4747**
 
 ```
 chorus/
-  main.py                    # FastAPI app + session orchestration
+  pyproject.toml
   requirements.txt
-  chorus_history.json        # Persisted session history
   chorus/
-    browser.py               # Playwright BrowserManager (persistent profiles)
-    websocket_manager.py     # WebSocket broadcast
+    main.py                    # FastAPI app + session orchestration
+    browser.py                 # Playwright BrowserManager (persistent profiles)
+    websocket_manager.py       # WebSocket broadcast
+    selectors.json             # All CSS selectors for every platform (one file)
     platforms/
-      base.py                # BaseAI ABC
+      base.py                  # BaseAI ABC
       gemini.py
       chatgpt.py
       claude.py
@@ -124,8 +129,8 @@ chorus/
       deepseek.py
       mistral.py
   frontend/
-    index.html               # Full SPA (D3, WebSocket, consensus engine)
-  profiles/                  # Browser profiles (gitignored)
+    index.html                 # Full SPA (D3, WebSocket, consensus engine)
+  profiles/                    # Browser profiles (gitignored)
 ```
 
 ---
@@ -134,8 +139,9 @@ chorus/
 
 1. Create `chorus/platforms/myai.py` extending `BaseAI`
 2. Implement `submit_prompt()` and `wait_for_response()`
-3. Register in `main.py` `PLATFORMS` and `PLATFORM_META` dicts
-4. That's it — the frontend picks it up automatically
+3. Add selectors to `chorus/selectors.json`
+4. Register in `main.py` `PLATFORMS` and `PLATFORM_META` dicts
+5. That's it — the frontend picks it up automatically
 
 ---
 
@@ -144,7 +150,7 @@ chorus/
 - **Backend:** Python 3.10+, FastAPI, uvicorn
 - **Browser automation:** Playwright (Chromium, persistent contexts)
 - **Frontend:** Vanilla HTML/CSS/JS, D3.js v7
-- **Consensus:** Client-side keyword overlap (no server ML needed)
+- **Consensus:** Server-side Jaccard similarity + TF keyword extraction
 
 ---
 
