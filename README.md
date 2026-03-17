@@ -4,10 +4,6 @@
 
 ![Chorus](docs/screenshot.png)
 
-| Send Panel | Onboarding Wizard |
-|---|---|
-| ![Send Panel](docs/screenshot_send_panel.png) | ![Onboarding](docs/screenshot_onboarding.png) |
-
 **Chorus** is a browser-native multi-AI consultation tool. Write one prompt, send it to ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, Mistral, and Copilot simultaneously — **no API keys required**. Uses your existing logged-in browser sessions and collects all responses into a D3 flowchart with consensus analysis, sentence-level diff, and Markdown export.
 
 ---
