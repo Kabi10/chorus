@@ -77,3 +77,54 @@ def test_retry_endpoint_409_on_concurrent_retry():
     r = c.post("/api/sessions/sess1/retry/gemini")
     assert r.status_code == 409
     del m.active_sessions["sess1"]
+
+
+# ── Regression: _classify_error — browser_closed ─────────────────────────────
+
+def test_classify_error_browser_closed():
+    from chorus.main import _classify_error
+    err = Exception("Target page, context or browser has been closed")
+    code, msg = _classify_error("gemini", err, page_text="")
+    assert code == "browser_closed"
+    assert "browser" in msg.lower()
+
+
+def test_classify_error_browser_closed_message_is_human_readable():
+    from chorus.main import _classify_error
+    err = Exception("Target page, context or browser has been closed")
+    _, msg = _classify_error("chatgpt", err, page_text="")
+    # Must not contain raw Playwright exception text
+    assert "Target page" not in msg
+
+
+# ── Regression: selectors.json CSS validity ───────────────────────────────────
+
+def test_no_wildcard_in_attribute_selectors():
+    """[attr='value*'] is invalid CSS — only [attr^=], [$=], [*=] are valid."""
+    sel = _load_selectors()
+    import re
+    for platform, config in sel.items():
+        for key, selectors in config.items():
+            if not isinstance(selectors, list):
+                continue
+            for s in selectors:
+                # Flag selectors like [attr='val*ue'] — literal * inside quoted value
+                bad = re.findall(r"\[[\w-]+='.+\*[^=]", s)
+                assert not bad, (
+                    f"{platform}.{key}: invalid wildcard in attribute selector: {s!r}"
+                )
+
+
+# ── Regression: check_auth covers new URL keyword additions ──────────────────
+
+import pytest
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("keyword", ["sign-in", "sign_in", "signup", "register"])
+async def test_check_auth_new_keywords(keyword):
+    """Keywords added after initial auth detection — must be in _AUTH_URL_KEYWORDS."""
+    from chorus.platforms.base import BaseAI, _AUTH_URL_KEYWORDS
+    assert keyword in _AUTH_URL_KEYWORDS, (
+        f"'{keyword}' not in _AUTH_URL_KEYWORDS — auth detection will miss this pattern"
+    )
