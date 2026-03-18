@@ -468,10 +468,14 @@ def export_session(session_id: str):
     ]
     for platform, resp in (entry.get("responses") or {}).items():
         meta = PLATFORM_META.get(platform, {"name": platform, "icon": "🤖"})
+        if isinstance(resp, dict):
+            resp_text = f"_Error: {resp.get('message', 'unknown error')}_"
+        else:
+            resp_text = resp or "_No response_"
         lines += [
             f"## {meta['icon']} {meta['name']}",
             "",
-            resp or "_No response_",
+            resp_text,
             "",
             "---",
             "",
@@ -498,7 +502,7 @@ def get_consensus(session_id: str):
 
     responses: dict[str, str] = {
         k: v for k, v in (entry.get("responses") or {}).items()
-        if v and not v.startswith("[Error")
+        if isinstance(v, str) and v and not v.startswith("[Error")
     }
     if not responses:
         raise HTTPException(422, "No valid responses to analyse")
