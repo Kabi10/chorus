@@ -48,9 +48,9 @@ class Copilot(BaseAI):
 
     async def wait_for_response(self, timeout: int = 90) -> str:
         await asyncio.sleep(3)
-        deadline = asyncio.get_event_loop().time() + timeout
+        deadline = asyncio.get_running_loop().time() + timeout
         last_text = ""
-        stable_since = asyncio.get_event_loop().time()
+        stable_since = asyncio.get_running_loop().time()
         stable_needed = 3.5
 
         # All known Copilot response selectors (old cib-* + new React structure)
@@ -68,7 +68,7 @@ class Copilot(BaseAI):
             '[role="presentation"] p'
         )
 
-        while asyncio.get_event_loop().time() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             try:
                 blocks = await self.page.query_selector_all(response_sels)
                 if blocks:
@@ -76,8 +76,8 @@ class Copilot(BaseAI):
                     current = "\n".join(t.strip() for t in texts if t.strip())
                     if current != last_text:
                         last_text = current
-                        stable_since = asyncio.get_event_loop().time()
-                    elif current and (asyncio.get_event_loop().time() - stable_since) > stable_needed:
+                        stable_since = asyncio.get_running_loop().time()
+                    elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
                         return current
             except Exception:
                 pass

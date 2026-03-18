@@ -99,19 +99,19 @@ class BaseAI(ABC):
             await self.page.keyboard.type(text, delay=20)
 
     async def _wait_stable(self, selector: str, stable_ms: int = 2500, timeout: int = 90) -> str:
-        deadline = asyncio.get_event_loop().time() + timeout
+        deadline = asyncio.get_running_loop().time() + timeout
         last_text = ""
-        stable_since = asyncio.get_event_loop().time()
+        stable_since = asyncio.get_running_loop().time()
 
-        while asyncio.get_event_loop().time() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             try:
                 el = await self.page.query_selector(selector)
                 if el:
                     current = (await el.text_content() or "").strip()
                     if current != last_text:
                         last_text = current
-                        stable_since = asyncio.get_event_loop().time()
-                    elif current and (asyncio.get_event_loop().time() - stable_since) > (stable_ms / 1000):
+                        stable_since = asyncio.get_running_loop().time()
+                    elif current and (asyncio.get_running_loop().time() - stable_since) > (stable_ms / 1000):
                         return current
             except Exception:
                 pass

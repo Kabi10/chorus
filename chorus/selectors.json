@@ -48,7 +48,7 @@
     "response": [
       "[data-message-author-role='assistant'] .markdown p",
       ".markdown.prose p",
-      "[data-testid='conversation-turn-*'] .markdown p"
+      "[data-testid^='conversation-turn-'] .markdown p"
     ],
     "auth_check": [
       "input[name='username']",
@@ -154,9 +154,16 @@
       "button[type='submit']:not([disabled])"
     ],
     "response": [
+      "cib-chat-turn[source='bot'] p",
       "cib-message-group[source='bot'] cib-message p",
+      "[data-testid='message-text'] p",
+      "[data-testid*='bot-message'] p",
+      "[class*='BotMessage'] p",
+      "[class*='bot-message'] p",
       "[class*='response'] p",
-      ".ac-textBlock p"
+      ".ac-textBlock p",
+      ".prose p",
+      "[role='presentation'] p"
     ],
     "auth_check": [
       "input[type='email']",

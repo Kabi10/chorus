@@ -77,9 +77,9 @@ class BrowserManager:
 
     async def stop(self):
         if self._using_cdp:
-            # Don't close the user's real Chrome context — just disconnect
+            # Disconnect without closing the user's real Chrome process
             if self._browser:
-                await self._browser.close()
+                await self._browser.disconnect()
         else:
             if self._ctx:
                 await self._ctx.close()
