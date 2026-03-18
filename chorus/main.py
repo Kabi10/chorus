@@ -60,7 +60,16 @@ def _classify_error(platform: str, exc: Exception, page_text: str = "") -> tuple
             "Check for a platform update in the Chorus repo."
         )
 
-    return "unknown", f"{platform.capitalize()}: {str(exc)[:120]}"
+    # Strip Playwright call-log noise — keep only the first line of the message
+    raw = str(exc).split("\n")[0].strip()
+    platform_name = PLATFORM_META.get(platform, {}).get("name", platform.capitalize())
+
+    if "Target page, context or browser has been closed" in raw:
+        return "browser_closed", (
+            f"{platform_name}: browser window was closed. Restart Chorus to reconnect."
+        )
+
+    return "unknown", f"{platform_name}: {raw[:120]}"
 
 
 _CHORUS_DIR  = Path.home() / ".chorus"

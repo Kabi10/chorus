@@ -9,7 +9,12 @@ class Copilot(BaseAI):
     icon         = "🪟"
     platform_key = "copilot"
 
+    def __init__(self, page):
+        super().__init__(page)
+        self._last_prompt = ""
+
     async def submit_prompt(self, prompt: str) -> None:
+        self._last_prompt = prompt
         await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(4)
 
@@ -46,6 +51,30 @@ class Copilot(BaseAI):
         except Exception as e:
             raise RuntimeError(f"Copilot: could not submit — {e}")
 
+    async def _js_extract(self) -> str:
+        """
+        JavaScript fallback: collect all paragraph-like text on the page,
+        strip out the user's own prompt, and return what remains.
+        Works regardless of which CSS class names Copilot uses.
+        """
+        try:
+            prompt_snippet = self._last_prompt[:60]
+            result = await self.page.evaluate(
+                """(promptSnippet) => {
+                    const candidates = Array.from(
+                        document.querySelectorAll('p, [role="paragraph"], li, .ac-textBlock')
+                    );
+                    return candidates
+                        .map(el => el.textContent.trim())
+                        .filter(t => t.length > 20 && !t.startsWith(promptSnippet))
+                        .join('\\n');
+                }""",
+                prompt_snippet,
+            )
+            return (result or "").strip()
+        except Exception:
+            return ""
+
     async def wait_for_response(self, timeout: int = 90) -> str:
         await asyncio.sleep(3)
         deadline = asyncio.get_running_loop().time() + timeout
@@ -64,7 +93,6 @@ class Copilot(BaseAI):
             '[class*="response"] p, '
             '.ac-textBlock p, '
             '.prose p, '
-            # Broadest fallback — last AI message paragraphs
             '[role="presentation"] p'
         )
 
@@ -74,13 +102,21 @@ class Copilot(BaseAI):
                 if blocks:
                     texts = [await b.text_content() or "" for b in blocks]
                     current = "\n".join(t.strip() for t in texts if t.strip())
-                    if current != last_text:
-                        last_text = current
-                        stable_since = asyncio.get_running_loop().time()
-                    elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
-                        return current
+                else:
+                    # CSS selectors found nothing — try JS extraction
+                    current = await self._js_extract()
+
+                if current != last_text:
+                    last_text = current
+                    stable_since = asyncio.get_running_loop().time()
+                elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
+                    return current
             except Exception:
                 pass
             await asyncio.sleep(0.8)
+
+        # Final JS attempt before giving up
+        if not last_text:
+            last_text = await self._js_extract()
 
         return last_text or "[No response captured]"

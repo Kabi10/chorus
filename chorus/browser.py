@@ -8,6 +8,9 @@ Priority order:
 
   2. Persistent profile at ~/.chorus/profile/ — a dedicated Chrome window with
      saved sessions.  Log in once; sessions persist across Chorus restarts.
+
+If the browser context dies mid-session (user closes Chrome, CDP drops, etc.),
+get_page() automatically reconnects before returning the page.
 """
 import asyncio
 import aiohttp
@@ -35,6 +38,7 @@ class BrowserManager:
         self._browser = None        # only set when using CDP
         self._pages: dict[str, Page] = {}
         self._using_cdp = False
+        self._start_lock = asyncio.Lock()
 
     @property
     def playwright(self):
@@ -42,12 +46,14 @@ class BrowserManager:
 
     async def start(self):
         self._playwright = await async_playwright().start()
+        await self._connect()
 
+    async def _connect(self):
+        """Establish browser context. Called on startup and on reconnect."""
         # ── 1. Try CDP (existing Chrome with --remote-debugging-port=9222) ──
         if await _cdp_available():
             try:
                 self._browser = await self._playwright.chromium.connect_over_cdp(CDP_URL)
-                # Use the first existing context (has the user's real sessions)
                 contexts = self._browser.contexts
                 self._ctx = contexts[0] if contexts else await self._browser.new_context()
                 self._using_cdp = True
@@ -57,6 +63,8 @@ class BrowserManager:
                 print(f"[Chorus] CDP available but connect failed ({e}), falling back to profile.")
 
         # ── 2. Persistent shared profile ──────────────────────────────────
+        self._using_cdp = False
+        self._browser = None
         PROFILE_DIR.mkdir(parents=True, exist_ok=True)
         launch_args = dict(
             user_data_dir=str(PROFILE_DIR),
@@ -65,19 +73,46 @@ class BrowserManager:
             viewport={"width": 1280, "height": 800},
         )
         try:
-            # Prefer system Chrome — sessions persist and refresh like a real browser
             self._ctx = await self._playwright.chromium.launch_persistent_context(
                 channel="chrome", **launch_args
             )
         except Exception:
-            # Fall back to bundled Chromium if Chrome isn't installed
             self._ctx = await self._playwright.chromium.launch_persistent_context(
                 **launch_args
             )
 
+    async def _ensure_context(self):
+        """If the browser context has been closed, reconnect transparently."""
+        needs_reconnect = False
+        if self._ctx is None:
+            needs_reconnect = True
+        else:
+            try:
+                # Accessing .pages raises if the context is closed
+                _ = self._ctx.pages
+            except Exception:
+                needs_reconnect = True
+
+        if needs_reconnect:
+            async with self._start_lock:
+                # Double-check after acquiring lock
+                try:
+                    if self._ctx is not None:
+                        _ = self._ctx.pages
+                        return  # another coroutine already reconnected
+                except Exception:
+                    pass
+                print("[Chorus] Browser context lost — reconnecting…")
+                self._pages.clear()
+                self._ctx = None
+                try:
+                    await self._connect()
+                    print("[Chorus] Reconnected.")
+                except Exception as e:
+                    raise RuntimeError(f"Could not reconnect to browser: {e}")
+
     async def stop(self):
         if self._using_cdp:
-            # Disconnect without closing the user's real Chrome process
             if self._browser:
                 await self._browser.disconnect()
         else:
@@ -87,10 +122,11 @@ class BrowserManager:
             await self._playwright.stop()
 
     async def get_context(self, platform: str = "default", profile: str = "default") -> BrowserContext:
-        """All platforms share one context (one Chrome profile)."""
+        await self._ensure_context()
         return self._ctx
 
     async def get_page(self, platform: str, profile: str = "default") -> Page:
+        await self._ensure_context()
         key = f"{platform}:{profile}"
         page = self._pages.get(key)
         if page is None or page.is_closed():
