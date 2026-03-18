@@ -1,19 +1,40 @@
 """
 Playwright browser session manager.
-All platforms share one persistent Chrome profile at ~/.chorus/profile/
-so sessions stay fresh while the browser is running — no per-platform login needed.
+
+Priority order:
+  1. CDP (remote debugging) — attaches to your already-running Chrome on port 9222.
+     Launch Chrome with: chrome.exe --remote-debugging-port=9222
+     Sessions are your real Chrome sessions — zero re-login needed.
+
+  2. Persistent profile at ~/.chorus/profile/ — a dedicated Chrome window with
+     saved sessions.  Log in once; sessions persist across Chorus restarts.
 """
+import asyncio
+import aiohttp
 from pathlib import Path
 from playwright.async_api import async_playwright, BrowserContext, Page
 
 PROFILE_DIR = Path.home() / ".chorus" / "profile"
+CDP_URL = "http://localhost:9222"
+
+
+async def _cdp_available() -> bool:
+    """Return True if Chrome remote debugging is reachable on port 9222."""
+    try:
+        async with aiohttp.ClientSession() as s:
+            async with s.get(f"{CDP_URL}/json/version", timeout=aiohttp.ClientTimeout(total=1.5)) as r:
+                return r.status == 200
+    except Exception:
+        return False
 
 
 class BrowserManager:
     def __init__(self):
         self._playwright = None
         self._ctx: BrowserContext | None = None
+        self._browser = None        # only set when using CDP
         self._pages: dict[str, Page] = {}
+        self._using_cdp = False
 
     @property
     def playwright(self):
@@ -21,6 +42,21 @@ class BrowserManager:
 
     async def start(self):
         self._playwright = await async_playwright().start()
+
+        # ── 1. Try CDP (existing Chrome with --remote-debugging-port=9222) ──
+        if await _cdp_available():
+            try:
+                self._browser = await self._playwright.chromium.connect_over_cdp(CDP_URL)
+                # Use the first existing context (has the user's real sessions)
+                contexts = self._browser.contexts
+                self._ctx = contexts[0] if contexts else await self._browser.new_context()
+                self._using_cdp = True
+                print("[Chorus] Connected to existing Chrome via CDP — using your real sessions.")
+                return
+            except Exception as e:
+                print(f"[Chorus] CDP available but connect failed ({e}), falling back to profile.")
+
+        # ── 2. Persistent shared profile ──────────────────────────────────
         PROFILE_DIR.mkdir(parents=True, exist_ok=True)
         launch_args = dict(
             user_data_dir=str(PROFILE_DIR),
@@ -40,8 +76,13 @@ class BrowserManager:
             )
 
     async def stop(self):
-        if self._ctx:
-            await self._ctx.close()
+        if self._using_cdp:
+            # Don't close the user's real Chrome context — just disconnect
+            if self._browser:
+                await self._browser.close()
+        else:
+            if self._ctx:
+                await self._ctx.close()
         if self._playwright:
             await self._playwright.stop()
 

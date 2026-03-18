@@ -37,7 +37,9 @@
       "#prompt-textarea",
       "textarea[data-id='root']",
       "div[contenteditable='true'][data-slate-editor]",
-      "textarea[placeholder*='Message']"
+      "textarea[placeholder*='Message']",
+      "div[contenteditable='true'][aria-label*='message']",
+      "div[contenteditable='true'][aria-label*='Message']"
     ],
     "send_button": [
       "button[data-testid='send-button']:not([disabled])",

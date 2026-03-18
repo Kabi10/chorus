@@ -11,15 +11,20 @@ class Copilot(BaseAI):
 
     async def submit_prompt(self, prompt: str) -> None:
         await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(3)
+        await asyncio.sleep(4)
 
         try:
             input_sel = (
+                # New Copilot UI (2025)
+                'textarea[id="userInput"], '
+                'textarea[data-testid*="input"], '
+                'div[contenteditable="true"][data-testid*="input"], '
+                # Fallbacks
                 'textarea[placeholder], '
                 'div[contenteditable="true"][aria-label], '
                 'textarea'
             )
-            el = await self.page.wait_for_selector(input_sel, timeout=12000)
+            el = await self.page.wait_for_selector(input_sel, timeout=15000)
             await el.click()
             tag = await el.evaluate("el => el.tagName.toLowerCase()")
             if tag == "textarea":
@@ -31,6 +36,7 @@ class Copilot(BaseAI):
             try:
                 send_btn = await self.page.wait_for_selector(
                     'button[aria-label*="Send"], button[aria-label*="Submit"], '
+                    'button[data-testid*="send"], '
                     'button[type="submit"]:not([disabled])',
                     timeout=3000
                 )
@@ -47,15 +53,24 @@ class Copilot(BaseAI):
         stable_since = asyncio.get_event_loop().time()
         stable_needed = 3.5
 
+        # All known Copilot response selectors (old cib-* + new React structure)
+        response_sels = (
+            'cib-chat-turn[source="bot"] p, '
+            'cib-message-group[source="bot"] cib-message p, '
+            '[data-testid="message-text"] p, '
+            '[data-testid*="bot-message"] p, '
+            '[class*="BotMessage"] p, '
+            '[class*="bot-message"] p, '
+            '[class*="response"] p, '
+            '.ac-textBlock p, '
+            '.prose p, '
+            # Broadest fallback — last AI message paragraphs
+            '[role="presentation"] p'
+        )
+
         while asyncio.get_event_loop().time() < deadline:
             try:
-                # Copilot responses are in cib-message-group or .response-message
-                blocks = await self.page.query_selector_all(
-                    'cib-message-group[source="bot"] cib-message p, '
-                    '[class*="response"] p, '
-                    '.ac-textBlock p, '
-                    '.prose p'
-                )
+                blocks = await self.page.query_selector_all(response_sels)
                 if blocks:
                     texts = [await b.text_content() or "" for b in blocks]
                     current = "\n".join(t.strip() for t in texts if t.strip())

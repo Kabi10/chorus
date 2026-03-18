@@ -654,13 +654,14 @@ function renderTree(prompt, responses){
     name: prompt.length > 60 ? prompt.slice(0,60)+'…' : prompt,
     children: Object.entries(responses).map(([key, resp]) => {
       const p = platforms[key] || {name: key, color:'#888', icon:'🤖'};
-      const preview = (resp||'').replace(/\n+/g,' ').slice(0,120) + (resp.length>120?'…':'');
+      const text = typeof resp === 'string' ? resp : (resp && resp.message ? '⚠ ' + resp.message : '[No response]');
+      const preview = text.replace(/\n+/g,' ').slice(0,120) + (text.length>120?'…':'');
       return {
         name:    p.name,
         icon:    p.icon,
-        color:   p.color,
+        color:   typeof resp === 'string' ? p.color : '#cc4444',
         preview: preview,
-        full:    resp,
+        full:    text,
         key:     key,
       };
     })
@@ -756,17 +757,19 @@ function renderCards(responses){
   view.innerHTML = '';
   for(const [key, resp] of Object.entries(responses)){
     const p = platforms[key]||{name:key,color:'#888',icon:'🤖'};
+    const isErr = typeof resp !== 'string';
+    const text = isErr ? (resp && resp.message ? resp.message : '[No response]') : resp;
+    const dotColor = isErr ? '#cc4444' : p.color;
     const card = document.createElement('div');
     card.className='resp-card';
     card.innerHTML=`
       <div class="resp-card-hdr">
-        <span class="resp-dot" style="background:${p.color}"></span>
+        <span class="resp-dot" style="background:${dotColor}"></span>
         <span style="font-size:18px">${p.icon}</span>
         <span class="resp-name">${p.name}</span>
-        <button onclick="navigator.clipboard.writeText(${JSON.stringify(resp)});toast('Copied!')"
-          style="margin-left:auto;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--dim);cursor:pointer;padding:3px 8px;font-size:11px">Copy</button>
+        ${isErr ? '<span style="font-size:10px;color:#cc6666;margin-left:4px">⚠ needs login</span>' : `<button onclick="navigator.clipboard.writeText(${JSON.stringify(text)});toast('Copied!')" style="margin-left:auto;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--dim);cursor:pointer;padding:3px 8px;font-size:11px">Copy</button>`}
       </div>
-      <div class="resp-body">${esc(resp)}</div>`;
+      <div class="resp-body" style="${isErr ? 'color:#cc6666;font-size:11px;' : ''}">${esc(text)}</div>`;
     view.appendChild(card);
   }
 }

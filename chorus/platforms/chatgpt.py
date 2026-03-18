@@ -11,11 +11,11 @@ class ChatGPT(BaseAI):
 
     async def submit_prompt(self, prompt: str) -> None:
         await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(3)
+        await asyncio.sleep(5)  # ChatGPT React app needs time to render
         await self.assert_authenticated()
 
         try:
-            el = await self.page.wait_for_selector(self._input_sel(), timeout=12000)
+            el = await self.page.wait_for_selector(self._input_sel(), timeout=20000)
             await el.click()
             tag = await el.evaluate("el => el.tagName.toLowerCase()")
             if tag == "textarea":
