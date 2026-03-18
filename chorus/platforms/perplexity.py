@@ -1,5 +1,4 @@
 import asyncio
-from urllib.parse import quote
 from .base import BaseAI
 
 
@@ -20,32 +19,30 @@ class Perplexity(BaseAI):
         "[class*='markdown'] p"
     )
 
+    # Input selectors covering all known Perplexity UI variants
+    _INPUT_SELS = (
+        "textarea[placeholder*='Ask'], "
+        "textarea[placeholder*='Search'], "
+        "textarea[name='q'], "
+        "div[contenteditable='true'][placeholder*='Ask'], "
+        "div[contenteditable='true'][role='textbox'], "
+        "div[contenteditable='true'], "
+        "textarea"
+    )
+
     async def submit_prompt(self, prompt: str) -> None:
-        encoded = quote(prompt)
-        await self.page.goto(f"{self.url}/?q={encoded}", wait_until="domcontentloaded", timeout=30000)
+        await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)
         await asyncio.sleep(4)
         await self.assert_authenticated()
 
-        # Check if URL-based submission already triggered a response
         try:
-            await self.page.wait_for_selector(self._RESPONSE_SELS, timeout=8000)
-            return  # response is loading, wait_for_response will capture it
-        except Exception:
-            pass
-
-        # Fall back to finding and submitting via the input field
-        extended_input_sel = (
-            "textarea[placeholder*='Ask'], "
-            "textarea[placeholder*='Search'], "
-            "textarea[name='q'], "
-            "div[contenteditable='true'][placeholder*='Ask'], "
-            "div[contenteditable='true'][role='textbox'], "
-            "textarea"
-        )
-        try:
-            el = await self.page.wait_for_selector(extended_input_sel, timeout=10000)
+            el = await self.page.wait_for_selector(self._INPUT_SELS, timeout=15000)
             await el.click()
-            await el.fill(prompt)
+            tag = await el.evaluate("el => el.tagName.toLowerCase()")
+            if tag == "textarea":
+                await el.fill(prompt)
+            else:
+                await self.page.keyboard.type(prompt, delay=10)
             await asyncio.sleep(0.5)
 
             send_sel = self._send_sel()

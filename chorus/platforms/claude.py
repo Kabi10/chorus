@@ -15,7 +15,7 @@ class Claude(BaseAI):
         await self.assert_authenticated()
 
         try:
-            el = await self.page.wait_for_selector(self._input_sel(), timeout=12000)
+            el = await self.page.wait_for_selector(self._input_sel(), timeout=20000)
             await el.click()
             await self.page.keyboard.type(prompt, delay=15)
             await asyncio.sleep(0.5)
@@ -34,19 +34,19 @@ class Claude(BaseAI):
 
     async def wait_for_response(self, timeout: int = 90) -> str:
         await asyncio.sleep(2)
-        deadline = asyncio.get_event_loop().time() + timeout
+        deadline = asyncio.get_running_loop().time() + timeout
         last_text = ""
-        stable_since = asyncio.get_event_loop().time()
+        stable_since = asyncio.get_running_loop().time()
         stable_needed = 3.0
 
-        while asyncio.get_event_loop().time() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             try:
                 streaming = await self.page.query_selector(self._loading_sel()) if self._loading_sel() else None
                 current = await self._collect_blocks()
                 if current != last_text:
                     last_text = current
-                    stable_since = asyncio.get_event_loop().time()
-                elif current and not streaming and (asyncio.get_event_loop().time() - stable_since) > stable_needed:
+                    stable_since = asyncio.get_running_loop().time()
+                elif current and not streaming and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
                     return current
             except Exception:
                 pass
