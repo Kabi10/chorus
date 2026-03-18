@@ -15,6 +15,13 @@ def _load_selectors() -> dict:
 
 ALL_SELECTORS: dict = _load_selectors()
 
+# URL fragments that indicate a login / auth wall
+_AUTH_URL_KEYWORDS = [
+    "login", "signin", "sign-in", "sign_in",
+    "auth", "signup", "register",
+    "accounts.google", "microsoft.com/login",
+]
+
 
 class BaseAI(ABC):
     name:        str = "base"
@@ -49,8 +56,8 @@ class BaseAI(ABC):
 
     async def check_auth(self) -> bool:
         """Returns True if a login wall or CAPTCHA is detected."""
-        url = self.page.url
-        if any(kw in url for kw in ["login", "signin", "auth", "accounts.google", "microsoft.com/login"]):
+        url = self.page.url.lower()
+        if any(kw in url for kw in _AUTH_URL_KEYWORDS):
             return True
         sel = self._auth_sel()
         if sel:
@@ -126,3 +133,30 @@ class BaseAI(ABC):
             return ""
         texts = [await b.text_content() or "" for b in blocks]
         return "\n".join(t.strip() for t in texts if t.strip())
+
+    async def _js_extract(self, prompt_snippet: str = "") -> str:
+        """
+        JavaScript-based fallback response extraction.
+        Collects all paragraph-like text on the page and strips out the
+        user's own prompt, returning whatever remains. Works regardless
+        of which CSS class names the platform currently uses.
+        """
+        try:
+            result = await self.page.evaluate(
+                """(promptSnippet) => {
+                    const candidates = Array.from(
+                        document.querySelectorAll('p, [role="paragraph"], li, .markdown p')
+                    );
+                    return candidates
+                        .map(el => el.textContent.trim())
+                        .filter(t => (
+                            t.length > 20 &&
+                            (!promptSnippet || !t.startsWith(promptSnippet))
+                        ))
+                        .join('\\n');
+                }""",
+                prompt_snippet,
+            )
+            return (result or "").strip()
+        except Exception:
+            return ""

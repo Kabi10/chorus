@@ -55,7 +55,7 @@ class Grok(BaseAI):
                 blocks = await self.page.query_selector_all(
                     '[data-testid="bot-message"] p, '
                     '[data-testid="bot-message"], '
-                    '.prose p, .r-1adg3ll p'
+                    '.prose p'
                 )
                 if blocks:
                     texts = [await b.text_content() or "" for b in blocks]
@@ -69,4 +69,6 @@ class Grok(BaseAI):
                 pass
             await asyncio.sleep(0.8)
 
+        if not last_text:
+            last_text = await self._js_extract()
         return last_text or "[No response captured]"

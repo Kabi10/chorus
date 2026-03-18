@@ -433,9 +433,11 @@ async def run_followup_platform(session_id: str, platform_key: str, prompt: str)
         await ws_manager.send_status(session_id, platform_key, "done", "Done", response)
 
     except Exception as e:
-        err = str(e)
-        active_sessions[session_id]["responses"][platform_key] = f"[Error: {err}]"
-        await ws_manager.send_status(session_id, platform_key, "error", err)
+        error_code, message = _classify_error(platform_key, e)
+        active_sessions[session_id]["responses"][platform_key] = {
+            "error": True, "error_code": error_code, "message": message,
+        }
+        await ws_manager.send_status(session_id, platform_key, "error", message)
 
 
 @app.get("/api/history")

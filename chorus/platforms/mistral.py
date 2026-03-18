@@ -65,4 +65,6 @@ class Mistral(BaseAI):
                 pass
             await asyncio.sleep(0.8)
 
+        if not last_text:
+            last_text = await self._js_extract()
         return last_text or "[No response captured]"
