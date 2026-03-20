@@ -1308,5 +1308,64 @@ init();
   });
 })();
 </script>
+
+<!-- ── Explainer card overlay ── -->
+<style>
+#explainer-overlay{
+  position:fixed;inset:0;z-index:9999;
+  background:rgba(11,11,16,0.96);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  opacity:0;pointer-events:none;transition:opacity .4s ease-out;
+}
+#explainer-overlay.visible{opacity:1;pointer-events:auto}
+#explainer-overlay.hiding{opacity:0;transition:opacity .6s ease-in}
+#explainer-headline{
+  font-size:28px;font-weight:700;color:var(--text);
+  max-width:600px;text-align:center;line-height:1.3;
+}
+#explainer-sub{
+  font-size:14px;color:var(--dim);text-align:center;
+}
+</style>
+<div id="explainer-overlay">
+  <div id="explainer-headline">Ask all AI models at once. See where they agree.</div>
+  <div id="explainer-sub">8 AIs. One prompt. Zero API keys.</div>
+</div>
+<script>
+(function(){
+  if (localStorage.getItem('chorus_seen')) return;
+
+  async function maybeShowExplainer() {
+    try {
+      const r = await fetch('/api/onboarding/state');
+      if (!r.ok) return;
+      const state = await r.json();
+      const onboardingComplete = Object.values(state).some(v => v.status === 'completed');
+      if (!onboardingComplete) return;
+    } catch(e) { return; }
+
+    const el = document.getElementById('explainer-overlay');
+    el.classList.add('visible');
+
+    function dismiss() {
+      el.classList.add('hiding');
+      el.classList.remove('visible');
+      setTimeout(() => { el.remove(); }, 600);
+      localStorage.setItem('chorus_seen', '1');
+    }
+
+    document.addEventListener('keydown', dismiss, {once: true});
+    document.addEventListener('click', dismiss, {once: true});
+
+    // 400ms fade-in + 3000ms hold = 3400ms, then 600ms fade-out, DOM removal at ~4000ms
+    setTimeout(() => {
+      if (localStorage.getItem('chorus_seen')) return;
+      dismiss();
+    }, 3400);
+  }
+
+  window.addEventListener('load', maybeShowExplainer);
+})();
+</script>
 </body>
 </html>
