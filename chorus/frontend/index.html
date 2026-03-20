@@ -7,6 +7,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+(function(){
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+  s.onerror=function(){ window._html2canvasUnavailable=true; };
+  document.head.appendChild(s);
+})();
+</script>
 <style>
 :root{
   --bg:#0b0b10;--sur:#13131c;--s2:#1a1a26;--s3:#22222f;
@@ -146,8 +154,13 @@ header .spacer{flex:1}
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
 
 /* ── Templates ── */
-.tmpl-btn{display:block;width:100%;text-align:left;padding:6px 8px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:11px;cursor:pointer;transition:all .15s;margin-bottom:4px}
+.tmpl-btn{display:flex;align-items:center;width:100%;text-align:left;padding:6px 8px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:11px;cursor:pointer;transition:all .15s;margin-bottom:4px;gap:6px}
 .tmpl-btn:hover{background:var(--s3);color:var(--text);border-color:var(--border2)}
+.tmpl-del{background:none;border:none;color:var(--dimmer);cursor:pointer;font-size:12px;padding:0 3px;line-height:1;flex-shrink:0;margin-left:auto}
+.tmpl-del:hover{color:#ef4444}
+.tmpl-save-form{margin-top:8px;display:none;background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);padding:8px;display:flex;flex-direction:column;gap:6px}
+.tmpl-save-form input,.tmpl-save-form textarea{background:var(--sur);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:inherit;font-size:12px;padding:5px 8px;outline:none;width:100%}
+.tmpl-save-form input:focus,.tmpl-save-form textarea:focus{border-color:var(--accent)}
 
 /* ── Diff view ── */
 #diff-view{flex:1;overflow-y:auto;padding:20px}
@@ -191,6 +204,17 @@ header .spacer{flex:1}
     <div id="prompt-area">
       <h2>Your Prompt</h2>
       <textarea id="prompt-input" placeholder="Ask something… e.g. 'What are the top 5 features I should build for a developer project manager?'"></textarea>
+      <div style="margin-top:6px">
+        <button onclick="toggleSaveTemplateForm()" style="background:none;border:1px solid var(--border);border-radius:var(--rs);color:var(--dim);font-family:inherit;font-size:11px;padding:4px 10px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--text)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--dim)'">💾 Save as template</button>
+      </div>
+      <div id="save-template-form" style="margin-top:8px;background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);padding:8px;flex-direction:column;gap:6px;display:none">
+        <input id="tmpl-name-input" placeholder="Template name" style="background:var(--sur);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:inherit;font-size:12px;padding:5px 8px;outline:none;width:100%" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
+        <input id="tmpl-desc-input" placeholder="Short description (optional)" style="background:var(--sur);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:inherit;font-size:12px;padding:5px 8px;outline:none;width:100%" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"/>
+        <div style="display:flex;gap:6px">
+          <button onclick="saveCurrentAsTemplate()" style="flex:1;background:var(--accent);border:none;border-radius:var(--rs);color:#fff;font-family:inherit;font-size:12px;padding:5px 10px;cursor:pointer">Save</button>
+          <button onclick="toggleSaveTemplateForm()" style="background:var(--s3);border:1px solid var(--border);border-radius:var(--rs);color:var(--dim);font-family:inherit;font-size:12px;padding:5px 10px;cursor:pointer">Cancel</button>
+        </div>
+      </div>
     </div>
 
     <div id="platform-area">
@@ -238,7 +262,8 @@ header .spacer{flex:1}
       <button class="view-btn" onclick="switchView('consensus',this)">🎯 Consensus</button>
       <button class="view-btn" onclick="switchView('diff',this)">🔍 Diff</button>
       <div style="flex:1"></div>
-      <button id="export-btn" onclick="exportSession()" title="Download as Markdown" style="padding:5px 12px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);font-family:inherit;font-size:12px;cursor:pointer;transition:all .15s">↓ Export</button>
+      <button id="export-btn" onclick="exportSession()" title="Download as Markdown" style="padding:5px 12px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);font-family:inherit;font-size:12px;cursor:pointer;transition:all .15s">↓ MD</button>
+      <button id="export-png-btn" onclick="exportPNG()" title="Download as PNG" style="padding:5px 12px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);font-family:inherit;font-size:12px;cursor:pointer;transition:all .15s;margin-left:4px">↓ PNG</button>
     </div>
 
     <div id="tree-view" style="display:none">
@@ -328,7 +353,7 @@ async function init(){
     renderPlatforms();
   } catch(e){ toast('Server not reachable. Is Chorus running?'); }
   connectWS();
-  renderTemplates();
+  await renderTemplates();
   await loadHistory();
 }
 
@@ -893,26 +918,69 @@ async function renderConsensus(prompt, responses){
 }
 
 // ── Templates ──────────────────────────────────────────────────────
-const TEMPLATES = [
-  {label:'🏗️ Best features to build next',  text:'What are the 5 most impactful features I should build next for a developer project manager tool? Be specific and rank by ROI.'},
-  {label:'⚖️ Compare tech stacks',           text:'Compare React + Node.js vs Next.js vs SvelteKit + FastAPI for building a modern SaaS web app in 2025. Cover DX, performance, ecosystem, and hiring.'},
-  {label:'🔍 Code review checklist',         text:'Give me a comprehensive code review checklist for a TypeScript/Python full-stack project. Cover security, performance, maintainability, and testing.'},
-  {label:'🚀 Launch prep checklist',         text:'What are the critical steps before launching a developer tool as open source? Cover README, licensing, CI/CD, security, docs, and community.'},
-  {label:'🤖 AI integration patterns',       text:'What are the best patterns for integrating LLMs into a production application? Cover prompting, streaming, caching, fallbacks, and cost control.'},
-];
+let _templates = [];
 
-function renderTemplates(){
+async function renderTemplates(){
+  try{
+    const res = await fetch(`${API}/api/templates`);
+    _templates = await res.json();
+  } catch(e){ _templates = []; }
+
   const list = document.getElementById('template-list');
-  list.innerHTML = TEMPLATES.map((t,i)=>
-    `<button class="tmpl-btn" onclick="useTemplate(${i})">${t.label}</button>`
-  ).join('');
+  if(!_templates.length){
+    list.innerHTML = '<div style="font-size:11px;color:var(--dimmer)">No templates yet</div>';
+    return;
+  }
+  list.innerHTML = _templates.map((t, i) => {
+    const nameLabel = esc(t.name) + (t.description ? ` <span style="color:var(--dimmer);font-size:10px">— ${esc(t.description)}</span>` : '');
+    const delBtn = !t.builtin
+      ? `<button class="tmpl-del" onclick="event.stopPropagation();deleteTemplate('${esc(t.id)}')" title="Delete">✕</button>`
+      : '';
+    return `<button class="tmpl-btn" onclick="useTemplate(${i})">${nameLabel}${delBtn}</button>`;
+  }).join('');
 }
 
 function useTemplate(i){
-  const t = TEMPLATES[i];
+  const t = _templates[i];
   if(!t) return;
-  document.getElementById('prompt-input').value = t.text;
+  document.getElementById('prompt-input').value = t.prompt;
   document.getElementById('prompt-input').focus();
+}
+
+function toggleSaveTemplateForm(){
+  const form = document.getElementById('save-template-form');
+  const isHidden = form.style.display === 'none' || form.style.display === '';
+  form.style.display = isHidden ? 'flex' : 'none';
+  if(isHidden) document.getElementById('tmpl-name-input').focus();
+}
+
+async function saveCurrentAsTemplate(){
+  const prompt = document.getElementById('prompt-input').value.trim();
+  if(!prompt){ toast('Enter a prompt first'); return; }
+  const name = document.getElementById('tmpl-name-input').value.trim();
+  if(!name){ toast('Enter a template name'); return; }
+  const description = document.getElementById('tmpl-desc-input').value.trim();
+  try{
+    await fetch(`${API}/api/templates`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, description, prompt})
+    });
+    document.getElementById('tmpl-name-input').value = '';
+    document.getElementById('tmpl-desc-input').value = '';
+    document.getElementById('save-template-form').style.display = 'none';
+    await renderTemplates();
+    toast('Template saved!');
+  } catch(e){ toast('Failed to save template'); }
+}
+
+async function deleteTemplate(id){
+  try{
+    const res = await fetch(`${API}/api/templates/${encodeURIComponent(id)}`,{method:'DELETE'});
+    if(!res.ok) throw new Error();
+    await renderTemplates();
+    toast('Template deleted');
+  } catch(e){ toast('Could not delete template'); }
 }
 
 // ── History ────────────────────────────────────────────────────────
@@ -1017,6 +1085,39 @@ function exportSession(){
   const a = document.createElement('a');
   a.href = url; a.download = `chorus-${currentSession}.md`;
   a.click();
+}
+
+async function exportPNG(){
+  if(!currentSession){ toast('No session to export'); return; }
+  if(window._html2canvasUnavailable || typeof html2canvas === 'undefined'){
+    toast('PNG export unavailable — CDN could not be loaded');
+    return;
+  }
+  // Capture whichever result panel is currently visible
+  const panels = ['cards-view','tree-view','consensus-view','diff-view'];
+  let target = null;
+  for(const id of panels){
+    const el = document.getElementById(id);
+    if(el && el.style.display !== 'none'){ target = el; break; }
+  }
+  if(!target){ toast('Nothing to capture yet'); return; }
+  try{
+    toast('Capturing…');
+    const canvas = await html2canvas(target, {
+      backgroundColor: '#0b0b10',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chorus-${currentSession}.png`;
+    a.click();
+    toast('PNG downloaded!');
+  } catch(e){
+    toast('PNG export failed: ' + e.message);
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -1306,6 +1407,70 @@ init();
       _show('ob-s1');
     }
   });
+})();
+</script>
+
+<!-- ── Explainer card overlay ── -->
+<style>
+#explainer-overlay{
+  position:fixed;inset:0;z-index:9999;
+  background:rgba(11,11,16,0.96);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  opacity:0;pointer-events:none;transition:opacity .4s ease-out;
+}
+#explainer-overlay.visible{opacity:1;pointer-events:auto}
+#explainer-overlay.hiding{opacity:0;transition:opacity .6s ease-in}
+#explainer-headline{
+  font-size:28px;font-weight:700;color:var(--text);
+  max-width:600px;text-align:center;line-height:1.3;
+}
+#explainer-sub{
+  font-size:14px;color:var(--dim);text-align:center;
+}
+</style>
+<div id="explainer-overlay">
+  <div id="explainer-headline">Ask all AI models at once. See where they agree.</div>
+  <div id="explainer-sub">8 AIs. One prompt. Zero API keys.</div>
+</div>
+
+<script>
+(function(){
+  if (localStorage.getItem('chorus_seen')) return;
+
+  async function maybeShowExplainer() {
+    try {
+      const r = await fetch('/api/onboarding/state');
+      if (!r.ok) return;
+      const state = await r.json();
+      const onboardingComplete = Object.values(state).some(v => v.status === 'completed');
+      if (!onboardingComplete) return;
+    } catch(e) { return; }
+
+    const el = document.getElementById('explainer-overlay');
+    // Fade in
+    el.classList.add('visible');
+
+    function dismiss() {
+      el.classList.add('hiding');
+      el.classList.remove('visible');
+      setTimeout(() => { el.remove(); }, 600);
+      localStorage.setItem('chorus_seen', '1');
+      document.removeEventListener('keydown', dismiss);
+      document.removeEventListener('click', dismiss);
+    }
+
+    // Dismiss on interaction
+    document.addEventListener('keydown', dismiss, {once: true});
+    document.addEventListener('click', dismiss, {once: true});
+
+    // Auto-dismiss: 400ms fade-in + 3000ms hold = 3400ms, then fade-out 600ms, remove at 4000ms
+    setTimeout(() => {
+      if (localStorage.getItem('chorus_seen')) return; // already dismissed
+      dismiss();
+    }, 3400);
+  }
+
+  window.addEventListener('load', maybeShowExplainer);
 })();
 </script>
 </body>
