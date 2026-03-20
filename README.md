@@ -2,7 +2,7 @@
 
 > Send one prompt to every major AI. See where they agree.
 
-![Chorus](docs/screenshot.png)
+![Chorus demo](docs/demo.gif)
 
 **Chorus** is a browser-native multi-AI consultation tool. Write one prompt, send it to ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, Mistral, and Copilot simultaneously — **no API keys required**. Uses your existing logged-in browser sessions and collects all responses into a D3 flowchart with consensus analysis, sentence-level diff, and Markdown export.
 
@@ -59,17 +59,13 @@
 ## Quick Start
 
 ```bash
-# 1. Clone
-git clone https://github.com/Kabi10/chorus.git
-cd chorus
+# 1. Install
+pip install chorus-ai
 
-# 2. Install Python dependencies
-pip install -e .
-
-# 3. Install Playwright browser
+# 2. Install Playwright browser
 playwright install chromium
 
-# 4. Run
+# 3. Run
 chorus
 ```
 
