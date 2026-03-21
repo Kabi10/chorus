@@ -46,25 +46,22 @@ class Mistral(BaseAI):
 
         while asyncio.get_running_loop().time() < deadline:
             try:
-                # Mistral uses message containers with role=assistant
-                blocks = await self.page.query_selector_all(
-                    '[data-role="assistant"] p, '
-                    '.message-content p, '
-                    '[class*="assistant-message"] p, '
-                    '.prose p'
+                # Scope to LAST assistant message only — no page-wide fallback
+                current = await self._collect_last_in(
+                    '[data-role="assistant"], [class*="assistant-message"]',
+                    'p'
                 )
-                if blocks:
-                    texts = [await b.text_content() or "" for b in blocks]
-                    current = "\n".join(t.strip() for t in texts if t.strip())
-                    if current != last_text:
-                        last_text = current
-                        stable_since = asyncio.get_running_loop().time()
-                    elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
-                        return current
+                if current and len(current) < 80:
+                    current = ""  # too short to be a real response
+                if current != last_text:
+                    last_text = current
+                    stable_since = asyncio.get_running_loop().time()
+                elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
+                    return self._clean_response(current)
             except Exception:
                 pass
             await asyncio.sleep(0.8)
 
         if not last_text:
             last_text = await self._js_extract()
-        return last_text or "[No response captured]"
+        return self._clean_response(last_text) or "[No response captured]"

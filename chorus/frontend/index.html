@@ -5,184 +5,240 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Chorus</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Mulish:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <style>
 :root{
-  --bg:#0b0b10;--sur:#13131c;--s2:#1a1a26;--s3:#22222f;
-  --border:#2a2a3e;--border2:#383850;--text:#e0e0ec;
-  --dim:#7777a0;--dimmer:#444466;--accent:#7c3aed;--acch:#9d5cf6;
-  --r:10px;--rs:6px;
+  --bg:#07080d;--sur:#0c0e16;--s2:#111521;--s3:#161c2d;
+  --border:#1e2640;--border2:#283352;
+  --text:#ccd6f0;--dim:#4a5d82;--dimmer:#2d3d60;
+  --accent:#22d3ee;--acch:#67e8f9;
+  --green:#4ade80;--red:#f87171;--orange:#fb923c;
+  --r:12px;--rs:7px;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;min-height:100vh;display:flex;flex-direction:column}
+body{background:var(--bg);color:var(--text);font-family:'Mulish',sans-serif;font-size:14px;min-height:100vh;display:flex;flex-direction:column}
 
 /* ── Header ── */
-header{background:var(--sur);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;gap:16px;flex-shrink:0}
-.logo{font-size:18px;font-weight:700;letter-spacing:-.3px}
-.logo span{color:var(--accent)}
-.logo-sub{font-size:12px;color:var(--dim);margin-left:2px}
+header{background:var(--sur);border-bottom:1px solid var(--border);padding:0 24px;height:54px;display:flex;align-items:center;gap:16px;flex-shrink:0;position:relative}
+header::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent 0%,var(--accent) 50%,transparent 100%);opacity:.2}
+.logo{font-family:'Syne',sans-serif;font-size:21px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(130deg,var(--accent) 0%,#818cf8 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.logo-sub{font-family:'Mulish',sans-serif;font-size:11px;font-weight:400;color:var(--dim);margin-left:8px;letter-spacing:.3px;-webkit-text-fill-color:var(--dim)}
 header .spacer{flex:1}
-.ws-status{font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border)}
-.ws-status.connected{color:#22c55e;border-color:#166534}
-.ws-status.disconnected{color:#ef4444;border-color:#7f1d1d}
+.ws-status{font-size:11px;font-family:'Mulish',sans-serif;font-weight:600;padding:4px 12px;border-radius:20px;border:1px solid var(--border);letter-spacing:.2px}
+.ws-status.connected{color:var(--green);border-color:rgba(74,222,128,.2);background:rgba(74,222,128,.05)}
+.ws-status.disconnected{color:var(--red);border-color:rgba(248,113,113,.2);background:rgba(248,113,113,.05)}
+.header-btn{background:none;border:1px solid var(--border);cursor:pointer;padding:6px 14px;border-radius:var(--rs);color:var(--dim);font-family:'Mulish',sans-serif;font-size:12px;font-weight:600;margin-left:8px;transition:all .15s;letter-spacing:.2px}
+.header-btn:hover{border-color:var(--border2);color:var(--text)}
 
 /* ── Layout ── */
 #app{flex:1;display:flex;overflow:hidden}
 #left-panel{width:340px;min-width:340px;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;background:var(--sur)}
-#right-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#right-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+
+/* ── Shared section heading ── */
+.pane-label{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--dimmer);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px}
 
 /* ── Prompt area ── */
-#prompt-area{padding:20px}
-#prompt-area h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
-#prompt-input{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:inherit;font-size:13px;padding:12px;outline:none;resize:vertical;min-height:110px;line-height:1.6;transition:border .2s}
-#prompt-input:focus{border-color:var(--accent)}
-#prompt-input::placeholder{color:var(--dim)}
+#prompt-area{padding:20px 20px 16px}
+#prompt-area h2{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--dimmer);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px}
+#prompt-input{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:'Mulish',sans-serif;font-size:13px;font-weight:400;padding:12px 14px;outline:none;resize:vertical;min-height:110px;line-height:1.65;transition:border-color .2s,box-shadow .2s}
+#prompt-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(34,211,238,.07)}
+#prompt-input::placeholder{color:var(--dimmer);font-weight:300}
 
 /* ── Platform selector ── */
 #platform-area{padding:0 20px 16px}
-#platform-area h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+#platform-area h2{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--dimmer);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px}
 .platform-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.plat-btn{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font-size:12px;font-family:inherit;transition:all .15s;user-select:none;width:100%}
-.plat-btn:hover{border-color:var(--border2);color:var(--text)}
-.plat-btn.selected{border-color:var(--accent);color:var(--text);background:var(--s3)}
-.plat-btn .plat-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.plat-wrap{position:relative}
+.plat-btn{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);cursor:pointer;font-size:12px;font-family:'Mulish',sans-serif;font-weight:500;transition:all .15s;user-select:none;width:100%;position:relative;overflow:hidden}
+.plat-btn:hover{border-color:var(--border2);color:var(--text);background:var(--s3)}
+.plat-btn.selected{border-color:var(--border2);color:var(--text);background:var(--s3)}
+.plat-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
 .plat-name{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;text-align:left}
-.plat-check{flex-shrink:0;font-size:13px}
+.plat-check{flex-shrink:0;font-size:11px;color:var(--accent);font-weight:700}
+.plat-acct-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--dimmer);cursor:pointer;font-size:10px;padding:2px 4px;line-height:1;border-radius:3px;transition:color .15s}
+.plat-acct-btn:hover{color:var(--dim)}
 
 /* ── Send btn ── */
 #send-area{padding:0 20px 20px}
-#send-btn{width:100%;padding:11px;background:var(--accent);border:none;border-radius:var(--r);color:#fff;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s;letter-spacing:.2px}
-#send-btn:hover{background:var(--acch)}
-#send-btn:disabled{background:var(--s3);color:var(--dim);cursor:not-allowed}
+#send-btn{width:100%;padding:12px;background:linear-gradient(135deg,var(--accent),#818cf8);border:none;border-radius:var(--r);color:#fff;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;letter-spacing:.5px;transition:opacity .15s,box-shadow .15s,transform .1s;position:relative;overflow:hidden}
+#send-btn::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);opacity:0;transition:opacity .15s}
+#send-btn:hover::after{opacity:1}
+#send-btn:hover{box-shadow:0 4px 22px rgba(34,211,238,.28)}
+#send-btn:active{transform:scale(.99)}
+#send-btn:disabled{background:var(--s3);color:var(--dim);cursor:not-allowed;box-shadow:none}
+#send-btn:disabled::after{display:none}
 
 /* ── Progress cards ── */
-#progress-area{padding:20px;border-top:1px solid var(--border)}
-#progress-area h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
-.prog-card{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);margin-bottom:6px;font-size:12px;transition:border-color .2s}
-.prog-card.done{border-color:#166534}
-.prog-card.error{border-color:#7f1d1d}
-.prog-card.typing{border-color:var(--accent)}
-.prog-icon{font-size:16px}
-.prog-name{font-weight:500}
-.prog-msg{color:var(--dim);margin-left:auto;font-size:11px}
-.prog-spinner{width:14px;height:14px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
-.prog-done{color:#22c55e;font-size:14px}
-.prog-err{color:#ef4444;font-size:14px}
-.prog-action-btn{margin-left:6px;padding:2px 10px;font-size:11px;font-family:inherit;border:1px solid #ef4444;border-radius:var(--rs);background:transparent;color:#ef4444;cursor:pointer;transition:background .15s,color .15s}
-.prog-action-btn:hover:not(:disabled){background:#ef4444;color:#fff}
+#progress-area{padding:16px 20px;border-top:1px solid var(--border)}
+#progress-area h2{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--dimmer);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px}
+.prog-card{display:flex;align-items:center;gap:10px;padding:9px 12px 9px 15px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);margin-bottom:5px;font-size:12px;transition:border-color .25s,background .25s,box-shadow .25s;position:relative;overflow:hidden}
+.prog-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--border);transition:background .25s,box-shadow .25s}
+.prog-card.typing::before{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.prog-card.done::before{background:var(--green)}
+.prog-card.error::before{background:var(--red)}
+.prog-card.typing{border-color:rgba(34,211,238,.2);animation:typing-pulse 2.2s ease-in-out infinite}
+.prog-card.done{border-color:rgba(74,222,128,.2)}
+.prog-card.error{border-color:rgba(248,113,113,.25)}
+@keyframes typing-pulse{0%,100%{background:rgba(34,211,238,.03)}50%{background:rgba(34,211,238,.07)}}
+.prog-icon{font-size:15px}
+.prog-name{font-weight:600;font-size:12px;color:var(--text)}
+.prog-msg{color:var(--dim);margin-left:auto;font-size:11px;font-family:'Mulish',sans-serif}
+.prog-spinner{width:13px;height:13px;border:1.5px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+.prog-done{color:var(--green);font-size:13px}
+.prog-err{color:var(--red);font-size:13px}
+.prog-action-btn{margin-left:6px;padding:2px 10px;font-size:10px;font-family:'Mulish',sans-serif;font-weight:600;border:1px solid var(--red);border-radius:var(--rs);background:transparent;color:var(--red);cursor:pointer;transition:background .15s,color .15s}
+.prog-action-btn:hover:not(:disabled){background:var(--red);color:#fff}
 .prog-action-btn:disabled{opacity:.5;cursor:not-allowed}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ── History ── */
 #history-area{padding:0 20px 20px;border-top:1px solid var(--border)}
-#history-area h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px}
-.hist-item{padding:6px 8px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);font-size:11px;color:var(--dim);cursor:pointer;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all .15s}
-.hist-item:hover{background:var(--s3);color:var(--text)}
+#history-area h2{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--dimmer);text-transform:uppercase;letter-spacing:1.2px;margin:16px 0 8px}
+.hist-item{padding:7px 10px;border-radius:var(--rs);background:var(--s2);border:1px solid transparent;font-size:11px;color:var(--dim);cursor:pointer;margin-bottom:4px;display:flex;align-items:center;gap:6px;transition:all .15s}
+.hist-item:hover{background:var(--s3);color:var(--text);border-color:var(--border)}
+.hist-txt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist-del{background:none;border:none;color:var(--dimmer);cursor:pointer;font-size:12px;padding:0 3px;line-height:1;flex-shrink:0;transition:color .15s}
+.hist-del:hover{color:var(--red)}
+
+/* ── Templates ── */
+#templates-area{padding:0 20px 16px;border-top:1px solid var(--border)}
+#templates-area h2{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--dimmer);text-transform:uppercase;letter-spacing:1.2px;margin:16px 0 8px}
+.tmpl-btn{display:block;width:100%;text-align:left;padding:7px 10px;border-radius:var(--rs);background:var(--s2);border:1px solid transparent;color:var(--dim);font-family:'Mulish',sans-serif;font-size:11px;font-weight:400;cursor:pointer;transition:all .15s;margin-bottom:4px}
+.tmpl-btn:hover{background:var(--s3);color:var(--text);border-color:var(--border)}
+
+/* ── Right panel: follow-up bar ── */
+#followup-bar{display:none;padding:10px 20px;background:var(--sur);border-bottom:1px solid var(--border);gap:10px;align-items:center;flex-shrink:0}
+#followup-bar .fu-label{font-size:11px;color:var(--dim);white-space:nowrap;font-family:'Syne',sans-serif;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+#followup-input{flex:1;background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-family:'Mulish',sans-serif;font-size:13px;padding:7px 12px;outline:none;transition:border-color .2s,box-shadow .2s}
+#followup-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(34,211,238,.07)}
+#followup-input::placeholder{color:var(--dimmer)}
+#followup-send{background:var(--accent);border:none;border-radius:var(--rs);color:#000;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;padding:7px 18px;cursor:pointer;white-space:nowrap;transition:background .15s,box-shadow .15s;letter-spacing:.3px}
+#followup-send:hover{background:var(--acch);box-shadow:0 2px 12px rgba(34,211,238,.25)}
 
 /* ── Right panel: view toggle ── */
-#view-toggle{display:flex;gap:6px;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--sur);flex-shrink:0}
-.view-btn{padding:5px 14px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);font-family:inherit;font-size:12px;cursor:pointer;transition:all .15s}
-.view-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+#view-toggle{display:none;gap:2px;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--sur);flex-shrink:0;align-items:center}
+.view-btn{padding:6px 16px;border-radius:6px;border:none;background:transparent;color:var(--dim);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;letter-spacing:.4px;text-transform:uppercase}
+.view-btn:hover{color:var(--text);background:var(--s2)}
+.view-btn.active{background:rgba(34,211,238,.1);color:var(--accent)}
+#export-btn{padding:5px 14px;border-radius:var(--rs);border:1px solid var(--border);background:transparent;color:var(--dim);font-family:'Mulish',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
+#export-btn:hover{border-color:var(--border2);color:var(--text)}
 
 /* ── Tree view ── */
 #tree-view{flex:1;overflow:hidden;position:relative}
 #tree-svg{width:100%;height:100%}
-
-/* D3 tree styles */
 .node circle{stroke-width:2px;cursor:pointer}
-.node text{font-family:'Inter',sans-serif;font-size:12px;fill:var(--text);pointer-events:none}
-.node .platform-label{font-weight:600;font-size:13px}
-.node .response-preview{font-size:10px;fill:#7777a0}
-.link{fill:none;stroke:#2a2a3e;stroke-width:1.5px}
+.node text{font-family:'Mulish',sans-serif;font-size:12px;fill:var(--text);pointer-events:none}
+.node .platform-label{font-weight:700;font-size:13px}
+.node .response-preview{font-size:10px;fill:var(--dim)}
+.link{fill:none;stroke:var(--border);stroke-width:1.5px}
 .link.animated{stroke-dasharray:5,3;animation:dash 1s linear infinite}
 @keyframes dash{to{stroke-dashoffset:-8}}
 
 /* ── Cards view ── */
-#cards-view{flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
-.resp-card{background:var(--sur);border:1px solid var(--border);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:10px}
-.resp-card-hdr{display:flex;align-items:center;gap:10px}
-.resp-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.resp-name{font-size:14px;font-weight:600}
-.resp-body{font-size:12px;color:var(--dim);line-height:1.7;max-height:260px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+#cards-view{flex:1;overflow-y:auto;padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;align-content:start}
+.resp-card{background:var(--sur);border:1px solid var(--border);border-radius:var(--r);display:flex;flex-direction:column;overflow:hidden;transition:border-color .2s,box-shadow .2s}
+.resp-card:hover{border-color:var(--border2);box-shadow:0 6px 28px rgba(0,0,0,.35)}
+.resp-card-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px 11px;border-bottom:1px solid var(--border);background:var(--s2)}
+.resp-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.resp-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text)}
+.resp-body{font-size:12.5px;font-family:'Mulish',sans-serif;color:var(--text);line-height:1.75;max-height:280px;overflow-y:auto;word-break:break-word;padding:14px;font-weight:400;transition:max-height .3s ease}
+.resp-body.expanded{max-height:none}
+.resp-expand{width:100%;padding:7px;border:none;border-top:1px solid var(--border);background:var(--s2);color:var(--dim);font-family:'Mulish',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;text-align:center}
+.resp-expand:hover{color:var(--text);background:var(--s3)}
+.resp-wc{margin-left:auto;font-size:10px;color:var(--dimmer);font-family:'Mulish',sans-serif;font-weight:500;white-space:nowrap}
+
+/* ── Markdown rendering ── */
+.resp-body h2{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text);margin:12px 0 5px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.resp-body h3{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text);margin:10px 0 4px}
+.resp-body h4{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--text);margin:8px 0 3px}
+.resp-body strong{font-weight:700;color:var(--text)}
+.resp-body em{font-style:italic}
+.resp-body ul,.resp-body ol{padding-left:20px;margin:5px 0}
+.resp-body li{margin-bottom:3px;line-height:1.65}
+.resp-body pre{background:var(--s3);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin:8px 0;overflow-x:auto}
+.resp-body pre code{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);background:none;border:none;padding:0}
+.resp-body code{font-family:'JetBrains Mono',monospace;background:var(--s3);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:11px;color:var(--acch)}
+.resp-body hr{border:none;border-top:1px solid var(--border);margin:10px 0}
+.resp-body .md-gap{height:7px}
+
+/* ── Card entrance animation ── */
+@keyframes card-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.resp-card{animation:card-in .3s ease both}
 
 /* ── Consensus view ── */
 #consensus-view{flex:1;overflow-y:auto;padding:20px}
-.consensus-banner{background:var(--s2);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px;text-align:center}
-.consensus-banner h3{font-size:15px;font-weight:600;margin-bottom:4px}
+.consensus-banner{background:linear-gradient(135deg,var(--s2),var(--s3));border:1px solid var(--border);border-radius:var(--r);padding:20px;margin-bottom:20px;text-align:center}
+.consensus-banner h3{font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text)}
 .consensus-banner p{font-size:12px;color:var(--dim)}
-.cons-section{margin-bottom:20px}
-.cons-section-title{font-size:12px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
-.cons-item{background:var(--sur);border:1px solid var(--border);border-radius:var(--rs);padding:12px;margin-bottom:8px}
-.cons-item-text{font-size:13px;line-height:1.6;margin-bottom:8px}
+.cons-section{margin-bottom:24px}
+.cons-section-title{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--dimmer);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.cons-item{background:var(--sur);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px;margin-bottom:8px}
+.cons-item-text{font-size:13px;line-height:1.65;margin-bottom:8px;color:var(--text)}
 .cons-agree{display:flex;gap:6px;flex-wrap:wrap}
-.agree-badge{font-size:11px;padding:2px 7px;border-radius:20px;border:1px solid var(--border);background:var(--s2);color:var(--dim)}
+.agree-badge{font-size:10px;padding:3px 8px;border-radius:20px;border:1px solid var(--border);background:var(--s2);color:var(--dim);font-family:'Mulish',sans-serif}
 
 /* ── Profile switcher ── */
-.plat-wrap{position:relative}
-.plat-acct-btn{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--dimmer);cursor:pointer;font-size:11px;padding:2px 4px;line-height:1;border-radius:3px;transition:color .15s}
-.plat-acct-btn:hover{color:var(--dim)}
-.profile-popover{position:absolute;top:calc(100% + 4px);right:0;z-index:50;background:var(--sur);border:1px solid var(--border2);border-radius:var(--r);padding:10px;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,.5);display:none}
+.profile-popover{position:absolute;top:calc(100% + 4px);right:0;z-index:50;background:var(--sur);border:1px solid var(--border2);border-radius:var(--r);padding:10px;min-width:180px;box-shadow:0 8px 28px rgba(0,0,0,.6);display:none}
 .profile-popover.open{display:block}
-.profile-popover h4{font-size:10px;font-weight:600;color:var(--dimmer);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.profile-popover h4{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;color:var(--dimmer);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
 .profile-option{display:flex;align-items:center;gap:7px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:12px;color:var(--dim);transition:all .15s}
 .profile-option:hover{background:var(--s2);color:var(--text)}
 .profile-option.selected{color:var(--text)}
 .profile-option input[type="radio"]{accent-color:var(--accent)}
-.new-profile-btn{width:100%;margin-top:8px;padding:5px;background:var(--s2);border:1px dashed var(--border2);border-radius:5px;color:var(--dim);font-size:11px;font-family:inherit;cursor:pointer;transition:all .15s;text-align:center}
+.new-profile-btn{width:100%;margin-top:8px;padding:5px;background:var(--s2);border:1px dashed var(--border2);border-radius:5px;color:var(--dim);font-size:11px;font-family:'Mulish',sans-serif;cursor:pointer;transition:all .15s;text-align:center}
 .new-profile-btn:hover{border-color:var(--accent);color:var(--accent)}
-.new-profile-input{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:inherit;font-size:12px;padding:5px 8px;outline:none;margin-top:6px;display:none}
+.new-profile-input{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:'Mulish',sans-serif;font-size:12px;padding:5px 8px;outline:none;margin-top:6px;display:none}
 .new-profile-input:focus{border-color:var(--accent)}
-
-/* ── Response diff ── */
-.diff-unique{background:#1e3a5f33;border-left:2px solid #3b82f6;padding:2px 4px;border-radius:2px}
-
-/* ── Empty / waiting ── */
-#welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--dim);gap:10px;padding:40px;text-align:center}
-#welcome h2{font-size:20px;color:var(--text);font-weight:600}
-#welcome p{font-size:13px;line-height:1.7;max-width:400px}
-
-/* scrollbar */
-::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
-
-/* ── Templates ── */
-.tmpl-btn{display:block;width:100%;text-align:left;padding:6px 8px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);color:var(--dim);font-family:inherit;font-size:11px;cursor:pointer;transition:all .15s;margin-bottom:4px}
-.tmpl-btn:hover{background:var(--s3);color:var(--text);border-color:var(--border2)}
 
 /* ── Diff view ── */
 #diff-view{flex:1;overflow-y:auto;padding:20px}
 .diff-hdr{display:grid;gap:14px}
-.diff-plat-hdr{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:8px}
-.diff-sentence{font-size:12px;line-height:1.8;padding:3px 6px;border-radius:3px;margin-bottom:2px}
-.diff-sentence.unique{background:#3b82f620;border-left:2px solid #3b82f6;padding-left:8px}
+.diff-plat-hdr{display:flex;align-items:center;gap:8px;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:10px;color:var(--text)}
+.diff-sentence{font-size:12px;line-height:1.8;padding:3px 6px;border-radius:4px;margin-bottom:3px;font-family:'Mulish',sans-serif}
+.diff-sentence.unique{background:rgba(34,211,238,.07);border-left:2px solid var(--accent);padding-left:8px;color:var(--text)}
 .diff-sentence.shared{color:var(--dim)}
+.diff-unique{background:rgba(34,211,238,.1);border-left:2px solid var(--accent);padding:2px 4px;border-radius:2px}
 
-/* ── History panel ── */
-.hist-item{padding:6px 8px;border-radius:var(--rs);background:var(--s2);border:1px solid var(--border);font-size:11px;color:var(--dim);cursor:pointer;margin-bottom:4px;display:flex;align-items:center;gap:6px;transition:all .15s}
-.hist-item:hover{background:var(--s3);color:var(--text)}
-.hist-txt{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hist-del{background:none;border:none;color:var(--dimmer);cursor:pointer;font-size:12px;padding:0 3px;line-height:1;flex-shrink:0}
-.hist-del:hover{color:var(--red)}
+/* ── Welcome / empty state ── */
+#welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--dim);gap:14px;padding:40px;text-align:center;position:relative;overflow:hidden}
+#welcome::before{content:'';position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(34,211,238,.05) 0%,transparent 70%);top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none}
+#welcome::after{content:'';position:absolute;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(129,140,248,.04) 0%,transparent 70%);top:40%;left:55%;transform:translate(-50%,-50%);pointer-events:none}
+#welcome h2{font-family:'Syne',sans-serif;font-size:28px;font-weight:800;color:var(--text);letter-spacing:-.5px;position:relative}
+#welcome p{font-size:13px;line-height:1.75;max-width:420px;color:var(--dim);font-weight:400;position:relative}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
 
 /* ── Toast ── */
-#toast{position:fixed;bottom:16px;right:16px;background:var(--s3);border:1px solid var(--border2);border-radius:var(--rs);padding:8px 14px;font-size:12px;z-index:200;opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none}
-#toast.show{opacity:1;transform:translateY(0)}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--s3);border:1px solid var(--border2);border-radius:20px;padding:8px 20px;font-size:12px;font-family:'Mulish',sans-serif;font-weight:600;z-index:200;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap;color:var(--text)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── Onboarding modal ── */
+#ob-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:950;align-items:center;justify-content:center}
+#ob-modal{background:var(--sur);border:1px solid var(--border2);border-radius:16px;padding:36px 40px;width:560px;max-height:88vh;overflow-y:auto;position:relative;box-shadow:0 28px 80px rgba(0,0,0,.6)}
+#ob-modal h2{font-family:'Syne',sans-serif;font-weight:700;color:var(--text)}
+.ob-btn-primary{padding:10px 24px;background:linear-gradient(135deg,var(--accent),#818cf8);border:none;border-radius:var(--rs);cursor:pointer;color:#fff;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:.3px;transition:box-shadow .15s}
+.ob-btn-primary:hover{box-shadow:0 4px 20px rgba(34,211,238,.25)}
+.ob-btn-primary:disabled{background:var(--s3);color:var(--dim);cursor:not-allowed;box-shadow:none;opacity:.45}
+.ob-btn-secondary{padding:8px 18px;background:none;border:1px solid var(--border);border-radius:var(--rs);cursor:pointer;color:var(--dim);font-family:'Mulish',sans-serif;font-size:13px;font-weight:500;transition:all .15s}
+.ob-btn-secondary:hover{border-color:var(--border2);color:var(--text)}
+.ob-plat-card{padding:12px 14px;border:1px solid var(--border);border-radius:10px;display:flex;flex-direction:column;gap:10px;background:var(--s2);transition:border-color .15s}
+.ob-plat-card:hover{border-color:var(--border2)}
 </style>
 </head>
 <body>
 
 <header>
   <div>
-    <div class="logo">Cho<span>rus</span> <span class="logo-sub">multi-AI consultation</span></div>
+    <span class="logo">Chorus</span><span class="logo-sub">multi-AI consultation</span>
   </div>
   <div class="spacer"></div>
   <div class="ws-status disconnected" id="ws-status">● Disconnected</div>
-  <button id="onboarding-btn" onclick="openOnboarding()" title="Manage Accounts"
-          style="background:none;border:1px solid rgba(255,255,255,.15);cursor:pointer;
-                 padding:6px 14px;border-radius:6px;color:inherit;font-size:.83rem;
-                 margin-left:8px;">
-    Manage Accounts
-  </button>
+  <button id="onboarding-btn" class="header-btn" onclick="openOnboarding()">Manage Accounts</button>
 </header>
 
 <div id="app">
@@ -190,70 +246,68 @@ header .spacer{flex:1}
   <div id="left-panel">
     <div id="prompt-area">
       <h2>Your Prompt</h2>
-      <textarea id="prompt-input" placeholder="Ask something… e.g. 'What are the top 5 features I should build for a developer project manager?'"></textarea>
+      <textarea id="prompt-input" placeholder="Ask something… e.g. 'What are the top 5 features I should build for a developer project manager?'&#10;&#10;Tip: Ctrl+Enter to send"></textarea>
     </div>
 
     <div id="platform-area">
-      <h2>Send to</h2>
-      <div class="platform-grid" id="platform-grid">
-        <!-- populated by JS -->
-      </div>
+      <h2 style="display:flex;align-items:center">Send to
+        <span style="margin-left:auto;display:flex;gap:8px">
+          <button onclick="selectAllPlatforms()" style="background:none;border:none;color:var(--dim);font-family:'Mulish',sans-serif;font-size:10px;font-weight:600;cursor:pointer;padding:0;transition:color .15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--dim)'">All</button>
+          <button onclick="selectNonePlatforms()" style="background:none;border:none;color:var(--dim);font-family:'Mulish',sans-serif;font-size:10px;font-weight:600;cursor:pointer;padding:0;transition:color .15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--dim)'">None</button>
+        </span>
+      </h2>
+      <div class="platform-grid" id="platform-grid"></div>
     </div>
 
     <div id="send-area">
       <button id="send-btn" onclick="sendQuery()">⚡ Send to All AIs</button>
     </div>
 
-    <div id="templates-area" style="padding:0 20px 16px">
+    <div id="templates-area">
       <h2>Templates</h2>
       <div id="template-list"></div>
     </div>
 
-    <div id="progress-area" style="display:none;padding:20px;border-top:1px solid var(--border)">
+    <div id="progress-area" style="display:none">
       <h2>Progress</h2>
       <div id="progress-cards"></div>
     </div>
 
-    <div id="history-area" style="padding:0 20px 20px;border-top:1px solid var(--border)">
-      <h2 style="font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 8px">Recent</h2>
+    <div id="history-area">
+      <h2>Recent</h2>
       <div id="history-list"></div>
     </div>
   </div>
 
   <!-- ── RIGHT PANEL ── -->
   <div id="right-panel">
-    <!-- Follow-up bar — shown after first results arrive -->
-    <div id="followup-bar" style="display:none;padding:10px 20px;background:var(--sur);border-bottom:1px solid var(--border);gap:8px;align-items:center;flex-shrink:0">
-      <div style="font-size:11px;color:var(--dim);white-space:nowrap">↩ Follow up</div>
-      <input id="followup-input" type="text" placeholder="Ask a follow-up question to all AIs in the same conversation…"
-        style="flex:1;background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);color:var(--text);font-family:inherit;font-size:13px;padding:7px 12px;outline:none;transition:border .2s"
-        onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'"
+    <div id="followup-bar">
+      <div class="fu-label">Follow up</div>
+      <input id="followup-input" type="text"
+        placeholder="Ask a follow-up question to all AIs…"
         onkeydown="if(event.key==='Enter')sendFollowUp()"/>
-      <button onclick="sendFollowUp()" style="background:var(--accent);border:none;border-radius:var(--rs);color:#fff;font-family:inherit;font-size:13px;padding:7px 16px;cursor:pointer;white-space:nowrap;transition:background .15s" onmouseover="this.style.background='var(--acch)'" onmouseout="this.style.background='var(--accent)'">Send</button>
+      <button id="followup-send" onclick="sendFollowUp()">Send</button>
     </div>
 
-    <div id="view-toggle" style="display:none">
+    <div id="view-toggle">
       <button class="view-btn active" onclick="switchView('tree',this)">🌳 Tree</button>
       <button class="view-btn" onclick="switchView('cards',this)">📋 Cards</button>
       <button class="view-btn" onclick="switchView('consensus',this)">🎯 Consensus</button>
       <button class="view-btn" onclick="switchView('diff',this)">🔍 Diff</button>
       <div style="flex:1"></div>
-      <button id="export-btn" onclick="exportSession()" title="Download as Markdown" style="padding:5px 12px;border-radius:var(--rs);border:1px solid var(--border);background:var(--s2);color:var(--dim);font-family:inherit;font-size:12px;cursor:pointer;transition:all .15s">↓ Export</button>
+      <button id="export-btn" onclick="exportSession()" title="Download as Markdown">↓ Export</button>
     </div>
 
-    <div id="tree-view" style="display:none">
-      <svg id="tree-svg"></svg>
-    </div>
-
+    <div id="tree-view" style="display:none"><svg id="tree-svg"></svg></div>
     <div id="cards-view" style="display:none"></div>
     <div id="consensus-view" style="display:none"></div>
     <div id="diff-view" style="display:none"></div>
 
     <div id="welcome">
-      <div style="font-size:48px">🎵</div>
+      <div style="font-size:44px;position:relative">🎵</div>
       <h2>Ask every AI at once</h2>
       <p>Write your prompt, select which AI platforms to consult, and hit Send. Chorus submits to all of them simultaneously — no API keys needed.</p>
-      <p style="font-size:11px;margin-top:8px;color:var(--dimmer)">First run: you'll be prompted to log in to each platform once. After that, sessions are saved.</p>
+      <p style="font-size:11px;color:var(--dimmer);position:relative">First run: you'll be prompted to log in to each platform once. After that, sessions are saved.</p>
     </div>
   </div>
 </div>
@@ -310,7 +364,7 @@ async function handleSessionComplete(msg){
   showResultViews();
   renderTree(msg.prompt, msg.responses);
   renderCards(msg.responses);
-  renderDiff(msg.prompt, msg.responses);
+  try { renderDiff(msg.prompt, msg.responses); } catch(e) { console.warn('renderDiff:', e); }
   // Consensus loads on demand (server call) — pre-render only tree/cards/diff
   // History is persisted server-side; reload from server
   await loadHistory();
@@ -545,8 +599,8 @@ function updateProgressCard(platform, status, message, response){
   if(status === 'error'){
     const { error_code, message: errMsg } = _parseErrorMessage(message);
     const isAuthExpired = error_code === 'auth_expired';
-    card.style.borderColor = '#ef4444';
-    card.style.borderWidth = '2px';
+    card.style.borderColor = '';
+    card.style.borderWidth = '';
     if(msg) msg.textContent = errMsg;
     if(spin){
       const actionBtn = isAuthExpired
@@ -679,8 +733,8 @@ function renderTree(prompt, responses){
     .enter().append('path')
     .attr('class','link')
     .attr('d', d3.linkHorizontal().x(d=>d.y).y(d=>d.x))
-    .attr('stroke', d => d.target.data.color || '#2a2a3e')
-    .attr('stroke-opacity', .5);
+    .attr('stroke', d => d.target.data.color || '#1e2640')
+    .attr('stroke-opacity', .4);
 
   // Nodes
   const node = g.selectAll('.node')
@@ -692,19 +746,19 @@ function renderTree(prompt, responses){
   // Root node
   node.filter(d=>!d.parent)
     .append('circle').attr('r',18)
-    .attr('fill','#7c3aed').attr('stroke','#9d5cf6');
+    .attr('fill','#22d3ee22').attr('stroke','#22d3ee').attr('stroke-width',1.5);
 
   node.filter(d=>!d.parent)
     .append('text').attr('dy','-.5em').attr('text-anchor','middle')
-    .attr('font-size','11px').attr('fill','#e0e0ec')
+    .attr('font-size','11px').attr('fill','#ccd6f0')
     .text(d => d.data.name);
 
   // Platform nodes
   node.filter(d=>d.depth===1)
     .append('circle').attr('r',22)
-    .attr('fill', d=>d.data.color+'33')
+    .attr('fill', d=>d.data.color+'22')
     .attr('stroke', d=>d.data.color)
-    .attr('stroke-width',2)
+    .attr('stroke-width',1.5)
     .style('cursor','pointer')
     .on('click', (e, d) => showResponseDetail(d.data));
 
@@ -718,8 +772,8 @@ function renderTree(prompt, responses){
     .attr('x', 28).attr('y', -30)
     .attr('width', Math.min(W/3, 260)).attr('height', 80)
     .append('xhtml:div')
-    .style('font-size','10px').style('color','#7777a0')
-    .style('font-family','Inter,sans-serif').style('line-height','1.4')
+    .style('font-size','10px').style('color','#4a5d82')
+    .style('font-family','Mulish,sans-serif').style('line-height','1.4')
     .style('word-break','break-word')
     .text(d => d.data.preview);
 
@@ -736,16 +790,16 @@ function showResponseDetail(data){
 
   const modal = document.createElement('div');
   modal.id = 'resp-detail-modal';
-  modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:100`;
+  modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:100`;
   modal.innerHTML = `
-    <div style="background:#13131c;border:1px solid #383850;border-radius:14px;padding:22px;width:600px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;gap:14px">
+    <div style="background:#0c0e16;border:1px solid #283352;border-radius:16px;padding:24px;width:640px;max-width:95vw;max-height:82vh;display:flex;flex-direction:column;gap:16px;box-shadow:0 28px 80px rgba(0,0,0,.6)">
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-size:20px">${data.icon}</span>
-        <strong style="font-size:15px;color:${data.color}">${data.name}</strong>
-        <button onclick="this.closest('#resp-detail-modal').remove()" style="margin-left:auto;background:#1a1a26;border:1px solid #2a2a3e;border-radius:5px;color:#7777a0;cursor:pointer;padding:3px 10px;font-size:15px">✕</button>
+        <strong style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:${data.color}">${data.name}</strong>
+        <button onclick="this.closest('#resp-detail-modal').remove()" style="margin-left:auto;background:#111521;border:1px solid #1e2640;border-radius:6px;color:#4a5d82;cursor:pointer;padding:4px 12px;font-size:14px;transition:color .15s" onmouseover="this.style.color='#ccd6f0'" onmouseout="this.style.color='#4a5d82'">✕</button>
       </div>
-      <div style="overflow-y:auto;flex:1;font-size:13px;line-height:1.7;color:#e0e0ec;white-space:pre-wrap;word-break:break-word;background:#1a1a26;border-radius:8px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:12px">${esc(data.full)}</div>
-      <button onclick="navigator.clipboard.writeText(${JSON.stringify(data.full)});toast('Copied!')" style="background:#7c3aed;border:none;border-radius:6px;color:#fff;padding:8px;font-family:inherit;cursor:pointer;font-size:13px">Copy Response</button>
+      <div class="resp-body" style="overflow-y:auto;flex:1;background:#111521;border-radius:10px;padding:16px;max-height:none">${mdToHtml(data.full)}</div>
+      <button onclick="navigator.clipboard.writeText(${JSON.stringify(data.full)});toast('Copied!')" style="background:linear-gradient(135deg,#22d3ee,#818cf8);border:none;border-radius:var(--rs);color:#fff;padding:10px;font-family:'Syne',sans-serif;cursor:pointer;font-size:13px;font-weight:700;letter-spacing:.3px">Copy Response</button>
     </div>`;
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
   document.body.appendChild(modal);
@@ -755,23 +809,42 @@ function showResponseDetail(data){
 function renderCards(responses){
   const view = document.getElementById('cards-view');
   view.innerHTML = '';
+  let idx = 0;
   for(const [key, resp] of Object.entries(responses)){
     const p = platforms[key]||{name:key,color:'#888',icon:'🤖'};
     const isErr = typeof resp !== 'string';
     const text = isErr ? (resp && resp.message ? resp.message : '[No response]') : resp;
-    const dotColor = isErr ? '#cc4444' : p.color;
+    const dotColor = isErr ? '#f87171' : p.color;
+    const wc = isErr ? '' : text.trim().split(/\s+/).filter(Boolean).length;
     const card = document.createElement('div');
     card.className='resp-card';
+    card.style.cssText = `border-top:2px solid ${dotColor};animation-delay:${idx * 60}ms`;
+    const bodyId = `resp-body-${key}`;
+    const expandId = `resp-expand-${key}`;
     card.innerHTML=`
       <div class="resp-card-hdr">
         <span class="resp-dot" style="background:${dotColor}"></span>
-        <span style="font-size:18px">${p.icon}</span>
+        <span style="font-size:17px">${p.icon}</span>
         <span class="resp-name">${p.name}</span>
-        ${isErr ? '<span style="font-size:10px;color:#cc6666;margin-left:4px">⚠ needs login</span>' : `<button onclick="navigator.clipboard.writeText(${JSON.stringify(text)});toast('Copied!')" style="margin-left:auto;background:var(--s2);border:1px solid var(--border);border-radius:5px;color:var(--dim);cursor:pointer;padding:3px 8px;font-size:11px">Copy</button>`}
+        ${isErr
+          ? '<span style="font-size:10px;color:#f87171;margin-left:4px;font-family:Mulish,sans-serif">⚠ needs login</span>'
+          : `<span class="resp-wc">${wc} words</span>
+             <button onclick="navigator.clipboard.writeText(${JSON.stringify(text)});toast('Copied!')" style="background:var(--s3);border:1px solid var(--border);border-radius:5px;color:var(--dim);cursor:pointer;padding:3px 10px;font-size:11px;font-family:'Mulish',sans-serif;font-weight:600;transition:all .15s" onmouseover="this.style.color='var(--text)';this.style.borderColor='var(--border2)'" onmouseout="this.style.color='var(--dim)';this.style.borderColor='var(--border)'">Copy</button>`
+        }
       </div>
-      <div class="resp-body" style="${isErr ? 'color:#cc6666;font-size:11px;' : ''}">${esc(text)}</div>`;
+      <div class="resp-body" id="${bodyId}" style="${isErr ? 'color:#f87171;font-size:11px;white-space:pre-wrap;' : ''}">${isErr ? esc(text) : mdToHtml(text)}</div>
+      ${!isErr ? `<button class="resp-expand" id="${expandId}" onclick="toggleExpand('${key}')">Show more ↓</button>` : ''}`;
     view.appendChild(card);
+    idx++;
   }
+}
+
+function toggleExpand(key){
+  const body = document.getElementById(`resp-body-${key}`);
+  const btn  = document.getElementById(`resp-expand-${key}`);
+  if(!body) return;
+  const expanded = body.classList.toggle('expanded');
+  if(btn) btn.textContent = expanded ? 'Show less ↑' : 'Show more ↓';
 }
 
 // ── Consensus ──────────────────────────────────────────────────────
@@ -780,7 +853,7 @@ async function renderConsensus(prompt, responses){
   const keys = Object.keys(responses);
   if(!keys.length){ view.innerHTML='<p style="color:var(--dim);padding:20px">No responses yet.</p>'; return; }
 
-  view.innerHTML = `<div class="consensus-banner"><h3>🎯 Consensus Report</h3><p style="color:var(--dim)">Analysing…</p></div>`;
+  view.innerHTML = `<div class="consensus-banner"><h3>🎯 Consensus Report</h3><p>Analysing…</p></div>`;
 
   // ── Server-side analysis ──────────────────────────────────────────
   let data = null;
@@ -806,7 +879,7 @@ async function renderConsensus(prompt, responses){
     html += `<div class="cons-section">
       <div class="cons-section-title">🔑 Consensus keywords</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${consensus_keywords.map(kw=>`<span style="background:var(--accent);color:#fff;padding:3px 10px;border-radius:20px;font-size:12px">${esc(kw)}</span>`).join('')}
+        ${consensus_keywords.map(kw=>`<span style="background:rgba(34,211,238,.12);color:var(--accent);border:1px solid rgba(34,211,238,.2);padding:3px 12px;border-radius:20px;font-size:12px;font-family:'Mulish',sans-serif;font-weight:600">${esc(kw)}</span>`).join('')}
       </div>
     </div>`;
   }
@@ -842,33 +915,33 @@ async function renderConsensus(prompt, responses){
       const sents = unique_points[plat]||[];
       if(!sents.length) return;
       html += `<div style="margin-bottom:12px">
-        <div style="font-size:12px;font-weight:600;margin-bottom:6px">${p.icon} ${p.name}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text)">${p.icon} ${p.name}</div>
         ${sents.map(s=>`<div class="cons-item" style="margin-bottom:6px"><div class="cons-item-text">${esc(s)}</div></div>`).join('')}
       </div>`;
     });
     html += `</div>`;
   }
 
-  // Pairwise similarity heatmap (mini table)
+  // Pairwise similarity heatmap
   const platList = Object.keys(platform_scores);
   if(platList.length >= 2){
     html += `<div class="cons-section">
       <div class="cons-section-title">📊 Platform similarity</div>
-      <div style="display:flex;flex-direction:column;gap:6px">`;
+      <div style="display:flex;flex-direction:column;gap:8px">`;
     platList.forEach(pa=>{
       Object.entries(platform_scores[pa]||{}).forEach(([pb, score])=>{
         const pctScore = Math.round(score * 100);
-        const col = pctScore > 60 ? 'var(--green)' : pctScore > 30 ? 'var(--yellow)' : 'var(--dim)';
+        const col = pctScore > 60 ? 'var(--green)' : pctScore > 30 ? 'var(--orange)' : 'var(--dim)';
         const pa_ = platforms[pa]||{icon:'🤖',name:pa};
         const pb_ = platforms[pb]||{icon:'🤖',name:pb};
-        html += `<div style="display:flex;align-items:center;gap:8px;font-size:12px">
-          <span style="width:80px">${pa_.icon} ${pa_.name}</span>
+        html += `<div style="display:flex;align-items:center;gap:10px;font-size:12px;font-family:'Mulish',sans-serif">
+          <span style="width:90px;color:var(--text)">${pa_.icon} ${pa_.name}</span>
           <span style="color:var(--dimmer)">↔</span>
-          <span style="width:80px">${pb_.icon} ${pb_.name}</span>
-          <div style="flex:1;height:4px;border-radius:2px;background:var(--s3)">
-            <div style="width:${pctScore}%;height:100%;border-radius:2px;background:${col}"></div>
+          <span style="width:90px;color:var(--text)">${pb_.icon} ${pb_.name}</span>
+          <div style="flex:1;height:3px;border-radius:2px;background:var(--s3)">
+            <div style="width:${pctScore}%;height:100%;border-radius:2px;background:${col};transition:width .5s"></div>
           </div>
-          <span style="color:${col};width:30px;text-align:right">${pctScore}%</span>
+          <span style="color:${col};width:32px;text-align:right;font-weight:600">${pctScore}%</span>
         </div>`;
       });
     });
@@ -881,10 +954,10 @@ async function renderConsensus(prompt, responses){
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">`;
   Object.entries(summary_stats).forEach(([plat, st])=>{
     const p = platforms[plat]||{icon:'🤖',name:plat};
-    html += `<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);padding:10px">
-      <div style="font-size:12px;font-weight:600;margin-bottom:6px">${p.icon} ${p.name}</div>
-      <div style="font-size:11px;color:var(--dim)">${st.words} words</div>
-      <div style="font-size:11px;color:var(--dim)">${st.sentences} sentences</div>
+    html += `<div style="background:var(--s2);border:1px solid var(--border);border-radius:var(--rs);padding:12px">
+      <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text)">${p.icon} ${p.name}</div>
+      <div style="font-size:11px;color:var(--dim);font-family:'Mulish',sans-serif">${st.words} words</div>
+      <div style="font-size:11px;color:var(--dim);font-family:'Mulish',sans-serif">${st.sentences} sentences</div>
     </div>`;
   });
   html += `</div></div>`;
@@ -926,7 +999,7 @@ async function loadHistory(){
 
 function renderHistory(){
   const list = document.getElementById('history-list');
-  if(!sessionHistory.length){ list.innerHTML='<div style="font-size:12px;color:var(--dimmer)">No history yet</div>'; return; }
+  if(!sessionHistory.length){ list.innerHTML='<div style="font-size:12px;color:var(--dimmer);font-family:Mulish,sans-serif">No history yet</div>'; return; }
   list.innerHTML = sessionHistory.map((s)=>`
     <div class="hist-item" title="${esc(s.prompt)}">
       <span class="hist-txt" onclick="loadHistoryEntry('${s.id}')">${esc(s.prompt.slice(0,55))}${s.prompt.length>55?'…':''}</span>
@@ -962,12 +1035,13 @@ function renderDiff(prompt, responses){
   const view = document.getElementById('diff-view');
   const keys = Object.keys(responses);
   if(keys.length < 2){
-    view.innerHTML='<p style="color:var(--dim);padding:20px;font-size:13px">Need at least 2 responses to show differences.</p>';
+    view.innerHTML='<p style="color:var(--dim);padding:20px;font-size:13px;font-family:Mulish,sans-serif">Need at least 2 responses to show differences.</p>';
     return;
   }
 
   // Split each response into sentences
   function toSentences(text){
+    if (typeof text !== 'string') return [];
     return (text||'').split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(s=>s.length>20);
   }
 
@@ -986,8 +1060,8 @@ function renderDiff(prompt, responses){
     });
   }
 
-  let html = `<div style="margin-bottom:16px;font-size:12px;color:var(--dim)">
-    <span style="background:#3b82f620;border-left:2px solid #3b82f6;padding:2px 8px;border-radius:3px;margin-right:8px">highlighted</span> = unique to this AI
+  let html = `<div style="margin-bottom:16px;font-size:12px;color:var(--dim);font-family:'Mulish',sans-serif">
+    <span style="background:rgba(34,211,238,.07);border-left:2px solid var(--accent);padding:2px 10px;border-radius:3px;margin-right:8px;color:var(--text)">highlighted</span> = unique to this AI
   </div><div class="diff-hdr" style="grid-template-columns:repeat(${Math.min(keys.length,3)},1fr)">`;
 
   keys.forEach(key => {
@@ -996,7 +1070,7 @@ function renderDiff(prompt, responses){
     const others  = keys.filter(k=>k!==key).map(k=>responses[k]);
     html += `<div>
       <div class="diff-plat-hdr">
-        <span style="width:10px;height:10px;border-radius:50%;background:${p.color};display:inline-block"></span>
+        <span style="width:10px;height:10px;border-radius:50%;background:${p.color};display:inline-block;flex-shrink:0"></span>
         ${p.icon} ${p.name}
       </div>
       ${sents.map(s => {
@@ -1030,102 +1104,174 @@ function esc(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Markdown renderer ───────────────────────────────────────────────
+function mdToHtml(text) {
+  if (!text) return '';
+
+  // Escape HTML first to prevent XSS
+  let s = String(text)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  // Code blocks (``` ... ```) — extract before other processing
+  const codeBlocks = [];
+  s = s.replace(/```[\w]*\n?([\s\S]*?)```/g, (_, code) => {
+    codeBlocks.push(`<pre><code>${code.trim()}</code></pre>`);
+    return `\x00CODE${codeBlocks.length - 1}\x00`;
+  });
+
+  // Inline code
+  s = s.replace(/`([^`\n]+)`/g, (_, c) => {
+    codeBlocks.push(`<code>${c}</code>`);
+    return `\x00CODE${codeBlocks.length - 1}\x00`;
+  });
+
+  // Process line by line
+  const lines = s.split('\n');
+  const out = [];
+  let inUL = false, inOL = false;
+
+  const closeList = () => {
+    if (inUL) { out.push('</ul>'); inUL = false; }
+    if (inOL) { out.push('</ol>'); inOL = false; }
+  };
+
+  for (const line of lines) {
+    // Headers
+    if (/^### /.test(line)) { closeList(); out.push(`<h4>${applyInline(line.slice(4))}</h4>`); continue; }
+    if (/^## /.test(line))  { closeList(); out.push(`<h3>${applyInline(line.slice(3))}</h3>`); continue; }
+    if (/^# /.test(line))   { closeList(); out.push(`<h2>${applyInline(line.slice(2))}</h2>`); continue; }
+
+    // Unordered list
+    const ul = line.match(/^[-*+] (.*)/);
+    if (ul) {
+      if (!inUL) { if (inOL) { out.push('</ol>'); inOL=false; } out.push('<ul>'); inUL=true; }
+      out.push(`<li>${applyInline(ul[1])}</li>`); continue;
+    }
+
+    // Ordered list
+    const ol = line.match(/^\d+\. (.*)/);
+    if (ol) {
+      if (!inOL) { if (inUL) { out.push('</ul>'); inUL=false; } out.push('<ol>'); inOL=true; }
+      out.push(`<li>${applyInline(ol[1])}</li>`); continue;
+    }
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) { closeList(); out.push('<hr>'); continue; }
+
+    // Empty line
+    if (!line.trim()) { closeList(); out.push('<div class="md-gap"></div>'); continue; }
+
+    // Close list before regular paragraph text
+    closeList();
+    out.push(applyInline(line));
+  }
+  closeList();
+
+  let result = out.join('\n');
+
+  // Restore code blocks
+  result = result.replace(/\x00CODE(\d+)\x00/g, (_, i) => codeBlocks[+i]);
+
+  // Convert remaining newlines between text lines to <br>
+  result = result.replace(/\n(?!<(?:div|ul|ol|li|h[2-4]|pre|hr))/g, '<br>');
+
+  return result;
+}
+
+function applyInline(s) {
+  return s
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    .replace(/_([^_\n]+)_/g, '<em>$1</em>');
+}
+
+// ── Platform select all/none ────────────────────────────────────────
+function selectAllPlatforms(){
+  for(const [key] of Object.entries(platforms)){
+    if(!selectedPlatforms.has(key)){
+      selectedPlatforms.add(key);
+      const btn = document.querySelector(`.plat-btn[data-platform="${key}"]`);
+      if(btn){ btn.classList.add('selected'); btn.querySelector('.plat-check').textContent='✓'; }
+    }
+  }
+}
+function selectNonePlatforms(){
+  const keys = Object.keys(platforms);
+  if(keys.length <= 1) return;
+  keys.forEach((key, i) => {
+    if(i === 0) return; // keep at least one
+    selectedPlatforms.delete(key);
+    const btn = document.querySelector(`.plat-btn[data-platform="${key}"]`);
+    if(btn){ btn.classList.remove('selected'); btn.querySelector('.plat-check').textContent=''; }
+  });
+}
+
 init();
+
+// ── Ctrl+Enter shortcut ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('prompt-input').addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); sendQuery(); }
+  });
+});
 </script>
 
 <!-- ── Onboarding Wizard ──────────────────────────────────────── -->
-<div id="ob-overlay"
-     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);
-            z-index:950;align-items:center;justify-content:center;">
-  <div id="ob-modal"
-       style="background:var(--card-bg,#1a1a1a);border:1px solid var(--border,#2a2a2a);
-              border-radius:14px;padding:36px 40px;width:560px;max-height:88vh;
-              overflow-y:auto;position:relative;box-shadow:0 24px 80px rgba(0,0,0,.5);">
+<div id="ob-overlay">
+  <div id="ob-modal">
 
     <!-- Screen 1: Welcome -->
     <div id="ob-s1">
-      <h2 style="margin:0 0 14px;font-size:1.15rem;font-weight:600;">Welcome to Chorus</h2>
-      <p style="opacity:.7;line-height:1.6;margin:0 0 28px;font-size:.9rem;">
+      <h2 style="margin:0 0 14px;font-size:1.15rem">Welcome to Chorus</h2>
+      <p style="color:var(--dim);line-height:1.65;margin:0 0 28px;font-size:.9rem;font-family:'Mulish',sans-serif">
         Chorus opens a real browser for each AI platform so you can log in once.
-        Your sessions are saved locally in <code>~/.chorus/profiles/</code>.
+        Your sessions are saved locally in <code style="background:var(--s2);padding:2px 6px;border-radius:4px;font-size:.85em">~/.chorus/profiles/</code>.
         You can skip any platform and add it later.
       </p>
-      <button onclick="ob_showChecklist()"
-              style="padding:10px 24px;background:#2563eb;border:none;border-radius:8px;
-                     cursor:pointer;color:#fff;font-size:.9rem;font-weight:500;">
-        Get Started →
-      </button>
+      <button class="ob-btn-primary" onclick="ob_showChecklist()">Get Started →</button>
     </div>
 
     <!-- Screen 2: Checklist -->
-    <div id="ob-s2" style="display:none;">
-      <h2 style="margin:0 0 18px;font-size:1rem;font-weight:600;">Connect Your AI Platforms</h2>
-      <div id="ob-platform-grid"
-           style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px;"></div>
-      <div style="display:flex;justify-content:flex-end;gap:10px;">
-        <button onclick="closeOnboarding()"
-                style="padding:8px 18px;background:none;border:1px solid var(--border,#2a2a2a);
-                       border-radius:7px;cursor:pointer;color:inherit;font-size:.87rem;">
-          Close
-        </button>
-        <button id="ob-done-btn" onclick="ob_showCompletion()" disabled
-                style="padding:8px 20px;background:#2563eb;border:none;border-radius:7px;
-                       cursor:pointer;color:#fff;font-size:.87rem;font-weight:500;opacity:.45;">
-          Done →
-        </button>
+    <div id="ob-s2" style="display:none">
+      <h2 style="margin:0 0 18px;font-size:1rem">Connect Your AI Platforms</h2>
+      <div id="ob-platform-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:24px"></div>
+      <div style="display:flex;justify-content:flex-end;gap:10px">
+        <button class="ob-btn-secondary" onclick="closeOnboarding()">Close</button>
+        <button id="ob-done-btn" class="ob-btn-primary" onclick="ob_showCompletion()" disabled style="opacity:.45">Done →</button>
       </div>
     </div>
 
     <!-- Screen 3: Per-platform step -->
-    <div id="ob-s3" style="display:none;">
-      <button onclick="ob_showChecklist()"
-              style="background:none;border:none;cursor:pointer;color:inherit;
-                     font-size:.85rem;opacity:.6;margin-bottom:16px;padding:0;">← Back</button>
-      <h2 id="ob-plat-title" style="margin:0 0 8px;font-size:1rem;font-weight:600;"></h2>
-      <p style="opacity:.65;font-size:.85rem;margin:0 0 24px;line-height:1.55;">
-        Click <strong>Open Browser</strong>. A Chromium window will open to the login page.
+    <div id="ob-s3" style="display:none">
+      <button onclick="ob_showChecklist()" style="background:none;border:none;cursor:pointer;color:var(--dim);font-family:'Mulish',sans-serif;font-size:.85rem;margin-bottom:16px;padding:0;transition:color .15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--dim)'">← Back</button>
+      <h2 id="ob-plat-title" style="margin:0 0 8px;font-size:1rem"></h2>
+      <p style="color:var(--dim);font-size:.85rem;margin:0 0 24px;line-height:1.6;font-family:'Mulish',sans-serif">
+        Click <strong style="color:var(--text)">Open Browser</strong>. A Chromium window will open to the login page.
         Log in with your account. Chorus will detect your session automatically.
       </p>
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px;">
-        <button id="ob-open-btn" onclick="ob_openBrowser()"
-                style="padding:9px 20px;background:#2563eb;border:none;border-radius:7px;
-                       cursor:pointer;color:#fff;font-size:.87rem;font-weight:500;">
-          Open Browser
-        </button>
-        <span id="ob-wait-msg" style="display:none;font-size:.83rem;opacity:.6;">
-          ⏳ Waiting for login…
-        </span>
-        <span id="ob-auth-ok" style="display:none;color:#22c55e;font-size:.87rem;">✓ Logged in</span>
-        <span id="ob-timeout-msg" style="display:none;color:#f87171;font-size:.83rem;">
-          Timed out. Try again or skip.
-        </span>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:18px">
+        <button id="ob-open-btn" class="ob-btn-primary" onclick="ob_openBrowser()">Open Browser</button>
+        <span id="ob-wait-msg" style="display:none;font-size:.83rem;color:var(--dim);font-family:'Mulish',sans-serif">⏳ Waiting for login…</span>
+        <span id="ob-auth-ok" style="display:none;color:var(--green);font-size:.87rem;font-family:'Mulish',sans-serif;font-weight:600">✓ Logged in</span>
+        <span id="ob-timeout-msg" style="display:none;color:var(--red);font-size:.83rem;font-family:'Mulish',sans-serif">Timed out. Try again or skip.</span>
       </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;">
-        <button id="ob-skip-btn" onclick="ob_skip()"
-                style="padding:8px 16px;background:none;border:1px solid var(--border,#2a2a2a);
-                       border-radius:7px;cursor:pointer;color:inherit;font-size:.83rem;opacity:.7;">
-          Skip
-        </button>
-        <button id="ob-continue-btn" onclick="ob_showChecklist()" disabled
-                style="padding:8px 20px;background:#2563eb;border:none;border-radius:7px;
-                       cursor:pointer;color:#fff;font-size:.87rem;font-weight:500;opacity:.45;">
-          Continue →
-        </button>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button id="ob-skip-btn" class="ob-btn-secondary" onclick="ob_skip()">Skip</button>
+        <button id="ob-continue-btn" class="ob-btn-primary" onclick="ob_showChecklist()" disabled style="opacity:.45">Continue →</button>
       </div>
     </div>
 
     <!-- Screen 4: Completion -->
-    <div id="ob-s4" style="display:none;">
-      <h2 style="margin:0 0 14px;font-size:1rem;font-weight:600;">You're all set!</h2>
-      <div id="ob-completion-list" style="margin-bottom:20px;"></div>
-      <p style="font-size:.82rem;opacity:.55;margin:0 0 24px;">
+    <div id="ob-s4" style="display:none">
+      <h2 style="margin:0 0 14px;font-size:1rem">You're all set!</h2>
+      <div id="ob-completion-list" style="margin-bottom:20px"></div>
+      <p style="font-size:.82rem;color:var(--dim);margin:0 0 24px;font-family:'Mulish',sans-serif">
         You can set up skipped platforms anytime from Manage Accounts.
       </p>
-      <button onclick="ob_finish()"
-              style="padding:10px 24px;background:#2563eb;border:none;border-radius:8px;
-                     cursor:pointer;color:#fff;font-size:.9rem;font-weight:500;">
-        Start Using Chorus →
-      </button>
+      <button class="ob-btn-primary" onclick="ob_finish()">Start Using Chorus →</button>
     </div>
   </div>
 </div>
@@ -1176,29 +1322,20 @@ init();
       const s = (state[key] || {}).status || 'pending';
       if (s === 'completed') hasCompleted = true;
       const badge = s === 'completed'
-        ? '<span style="color:#22c55e;font-size:.78rem;">✓ Logged in</span>'
+        ? `<span style="color:var(--green);font-size:.78rem;font-weight:600">✓ Logged in</span>`
         : s === 'skipped'
-        ? '<span style="opacity:.4;font-size:.78rem;">Skipped</span>'
-        : '<span style="opacity:.5;font-size:.78rem;">Pending</span>';
+        ? `<span style="color:var(--dim);font-size:.78rem">Skipped</span>`
+        : `<span style="color:var(--dimmer);font-size:.78rem">Pending</span>`;
       const btn = s !== 'completed'
-        ? `<button onclick="ob_startPlatform('${key}')"
-                   style="margin-top:6px;padding:5px 12px;background:#2563eb;border:none;
-                          border-radius:5px;cursor:pointer;color:#fff;font-size:.78rem;">
-             Set up
-           </button>`
-        : `<button onclick="ob_startPlatform('${key}')"
-                   style="margin-top:6px;padding:5px 12px;background:none;
-                          border:1px solid rgba(255,255,255,.15);border-radius:5px;
-                          cursor:pointer;color:inherit;font-size:.78rem;opacity:.6;">
-             Re-login
-           </button>`;
+        ? `<button onclick="ob_startPlatform('${key}')" class="ob-btn-primary" style="padding:5px 14px;font-size:.78rem">Set up</button>`
+        : `<button onclick="ob_startPlatform('${key}')" class="ob-btn-secondary" style="padding:5px 14px;font-size:.78rem">Re-login</button>`;
       grid.insertAdjacentHTML('beforeend', `
-        <div style="padding:12px 14px;border:1px solid var(--border,#2a2a2a);border-radius:9px;display:flex;flex-direction:column;gap:10px;">
-          <div style="font-size:.88rem;font-weight:500;display:flex;align-items:center;gap:7px;">
-            <span style="color:${(pm.color||'#888')};font-size:1.1em;flex-shrink:0;">${pm.icon||''}</span>
-            <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${pm.name || key}</span>
+        <div class="ob-plat-card">
+          <div style="font-family:'Syne',sans-serif;font-size:.88rem;font-weight:700;display:flex;align-items:center;gap:7px;color:var(--text)">
+            <span style="color:${(pm.color||'#888')};font-size:1.1em;flex-shrink:0">${pm.icon||''}</span>
+            <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${pm.name || key}</span>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;">${badge}${btn}</div>
+          <div style="display:flex;align-items:center;gap:8px">${badge}${btn}</div>
         </div>`);
     }
     const doneBtn = document.getElementById('ob-done-btn');
@@ -1271,11 +1408,10 @@ init();
       const meta = (window._platformMeta || {})[key] || {};
       const s = info.status;
       list.insertAdjacentHTML('beforeend', `
-        <div style="display:flex;align-items:center;gap:10px;padding:6px 0;
-                    border-bottom:1px solid var(--border,#2a2a2a);font-size:.87rem;">
-          <span style="color:${meta.color||'#888'};min-width:20px;">${meta.icon||''}</span>
-          <span style="flex:1;">${meta.name||key}</span>
-          <span style="font-size:.8rem;${s==='completed'?'color:#22c55e':'opacity:.4'}">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:.87rem;font-family:'Mulish',sans-serif">
+          <span style="color:${meta.color||'#888'};min-width:20px">${meta.icon||''}</span>
+          <span style="flex:1;color:var(--text)">${meta.name||key}</span>
+          <span style="font-size:.8rem;font-weight:600;${s==='completed'?'color:var(--green)':'color:var(--dim)'}">
             ${s==='completed'?'✓ Logged in':s==='skipped'?'Skipped':'Pending'}
           </span>
         </div>`);
@@ -1290,8 +1426,6 @@ init();
 
   // Auto-trigger on page load if onboarding needed
   window.addEventListener('load', async () => {
-    // Populate _platformMeta from existing platform data in the page
-    // (it should already be set by the main app JS before this runs)
     if (!window._platformMeta) {
       try {
         const r = await fetch('/api/platforms');
@@ -1313,22 +1447,26 @@ init();
 <style>
 #explainer-overlay{
   position:fixed;inset:0;z-index:9999;
-  background:rgba(11,11,16,0.96);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;
+  background:rgba(7,8,13,0.97);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
   opacity:0;pointer-events:none;transition:opacity .4s ease-out;
 }
 #explainer-overlay.visible{opacity:1;pointer-events:auto}
 #explainer-overlay.hiding{opacity:0;transition:opacity .6s ease-in}
 #explainer-headline{
-  font-size:28px;font-weight:700;color:var(--text);
-  max-width:600px;text-align:center;line-height:1.3;
+  font-family:'Syne',sans-serif;
+  font-size:32px;font-weight:800;
+  background:linear-gradient(130deg,var(--accent) 0%,#818cf8 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+  max-width:600px;text-align:center;line-height:1.25;letter-spacing:-.5px;
 }
 #explainer-sub{
-  font-size:14px;color:var(--dim);text-align:center;
+  font-family:'Mulish',sans-serif;
+  font-size:15px;color:var(--dim);text-align:center;font-weight:400;
 }
 </style>
 <div id="explainer-overlay">
-  <div id="explainer-headline">Ask all AI models at once. See where they agree.</div>
+  <div id="explainer-headline">Ask all AI models at once.<br>See where they agree.</div>
   <div id="explainer-sub">8 AIs. One prompt. Zero API keys.</div>
 </div>
 <script>
@@ -1357,7 +1495,6 @@ init();
     document.addEventListener('keydown', dismiss, {once: true});
     document.addEventListener('click', dismiss, {once: true});
 
-    // 400ms fade-in + 3000ms hold = 3400ms, then 600ms fade-out, DOM removal at ~4000ms
     setTimeout(() => {
       if (localStorage.getItem('chorus_seen')) return;
       dismiss();

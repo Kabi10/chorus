@@ -42,16 +42,25 @@ class Claude(BaseAI):
         while asyncio.get_running_loop().time() < deadline:
             try:
                 streaming = await self.page.query_selector(self._loading_sel()) if self._loading_sel() else None
-                current = await self._collect_blocks()
+                # Scope to LAST assistant message only — try multiple selectors
+                current = await self._collect_last_in(
+                    '[data-testid="assistant-message"], '
+                    '[data-author="assistant"], '
+                    'div[class*="AssistantMessage"], '
+                    'div[class*="assistant-message"]',
+                    '.font-claude-message p, [class*="prose"] p, p'
+                )
+                if current and len(current) < 80:
+                    current = ""  # too short to be a real response
                 if current != last_text:
                     last_text = current
                     stable_since = asyncio.get_running_loop().time()
                 elif current and not streaming and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
-                    return current
+                    return self._clean_response(current)
             except Exception:
                 pass
             await asyncio.sleep(0.8)
 
         if not last_text:
             last_text = await self._js_extract()
-        return last_text or "[No response captured]"
+        return self._clean_response(last_text) or "[No response captured]"

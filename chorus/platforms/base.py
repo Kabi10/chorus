@@ -1,6 +1,7 @@
 """Base class for all AI platform connectors."""
 import asyncio
 import json
+import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 from playwright.async_api import Page
@@ -33,6 +34,7 @@ class BaseAI(ABC):
     def __init__(self, page: Page):
         self.page = page
         self._sel = ALL_SELECTORS.get(self.platform_key, {})
+        self._last_prompt: str = ""
 
     # ── Selector helpers ──────────────────────────────────────────
 
@@ -92,6 +94,7 @@ class BaseAI(ABC):
 
     async def run(self, prompt: str, timeout: int = 90) -> str:
         """Full flow: submit + wait. Returns response text."""
+        self._last_prompt = prompt
         await self.submit_prompt(prompt)
         return await self.wait_for_response(timeout)
 
@@ -134,24 +137,114 @@ class BaseAI(ABC):
         texts = [await b.text_content() or "" for b in blocks]
         return "\n".join(t.strip() for t in texts if t.strip())
 
-    async def _js_extract(self, prompt_snippet: str = "") -> str:
+    async def _collect_last_in(self, container_sel: str, content_sel: str) -> str:
+        """
+        Find ALL elements matching container_sel, take the LAST one, then
+        collect text from content_sel elements within it.
+        Falls back to the container's full textContent if content_sel matches nothing.
+        Prevents multi-turn repetition by scoping to the most-recent message only.
+        """
+        try:
+            result = await self.page.evaluate(
+                """([cSel, pSel]) => {
+                    const containers = document.querySelectorAll(cSel);
+                    if (!containers.length) return '';
+                    const last = containers[containers.length - 1];
+                    const blocks = last.querySelectorAll(pSel);
+                    if (blocks.length) {
+                        return Array.from(blocks)
+                            .map(el => el.textContent.trim())
+                            .filter(t => t.length > 0)
+                            .join('\\n');
+                    }
+                    return last.textContent.trim();
+                }""",
+                [container_sel, content_sel],
+            )
+            return (result or "").strip()
+        except Exception:
+            return ""
+
+    def _clean_response(self, text: str) -> str:
+        """
+        Post-process collected response text to remove common garbage:
+        - <think>…</think> blocks (DeepSeek R1 reasoning leaked as text)
+        - Sources / References / Citations sections appended by Perplexity et al.
+        - Inline citation markers [1], [^2]
+        - Consecutive duplicate paragraphs (streaming artifacts / multi-turn bleed)
+        """
+        if not text:
+            return text
+
+        # Strip prompt text if it leaked to the start of the response
+        if self._last_prompt:
+            snippet = self._last_prompt[:50]
+            if text.startswith(snippet):
+                text = text[len(self._last_prompt):].lstrip()
+
+        # Strip <think>…</think> blocks
+        text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE)
+
+        # Cut off sources/references section when it appears as a standalone heading
+        text = re.sub(
+            r"\n{0,2}\*{0,2}(Sources|References|Citations|Bibliography|Further Reading)"
+            r"\*{0,2}[\s:]*\n[\s\S]*$",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        # Remove inline citation markers like [1], [^2], [12]
+        text = re.sub(r"\s*\[\^?\d+\]", "", text)
+
+        # Strip trailing source-citation lines like "Some Title - domain.com"
+        # or "Some Title | source.com" appended by Copilot / Perplexity
+        lines_pre = text.split("\n")
+        cleaned_lines = []
+        for line in lines_pre:
+            stripped = line.strip()
+            # Skip lines that look like "Article Title - domain.com" or end with a bare domain
+            if re.search(r"[-|]\s+\w[\w.-]+\.(com|org|io|net|ai|dev|co)\s*$", stripped, re.IGNORECASE):
+                continue
+            if re.match(r"^https?://", stripped):
+                continue
+            cleaned_lines.append(line)
+        text = "\n".join(cleaned_lines)
+
+        # Deduplicate consecutive identical lines (streaming / multi-turn bleed)
+        lines = text.split("\n")
+        out, prev = [], None
+        for line in lines:
+            stripped = line.strip()
+            if stripped and stripped == prev:
+                continue
+            out.append(line)
+            if stripped:
+                prev = stripped
+
+        # Collapse runs of 3+ blank lines
+        text = re.sub(r"\n{3,}", "\n\n", "\n".join(out))
+        return text.strip()
+
+    async def _js_extract(self) -> str:
         """
         JavaScript-based fallback response extraction.
         Collects all paragraph-like text on the page and strips out the
         user's own prompt, returning whatever remains. Works regardless
         of which CSS class names the platform currently uses.
         """
+        prompt_snippet = self._last_prompt[:60] if self._last_prompt else ""
         try:
             result = await self.page.evaluate(
                 """(promptSnippet) => {
                     const candidates = Array.from(
-                        document.querySelectorAll('p, [role="paragraph"], li, .markdown p')
+                        document.querySelectorAll('p, [role="paragraph"], .markdown p')
                     );
                     return candidates
                         .map(el => el.textContent.trim())
                         .filter(t => (
-                            t.length > 20 &&
-                            (!promptSnippet || !t.startsWith(promptSnippet))
+                            t.length > 40 &&
+                            (!promptSnippet || !t.includes(promptSnippet.substring(0, 30)))
                         ))
                         .join('\\n');
                 }""",

@@ -98,25 +98,28 @@ class Copilot(BaseAI):
 
         while asyncio.get_running_loop().time() < deadline:
             try:
-                blocks = await self.page.query_selector_all(response_sels)
-                if blocks:
-                    texts = [await b.text_content() or "" for b in blocks]
-                    current = "\n".join(t.strip() for t in texts if t.strip())
-                else:
-                    # CSS selectors found nothing — try JS extraction
-                    current = await self._js_extract()
+                # Try scoping to the last bot message container first
+                current = await self._collect_last_in(
+                    'cib-chat-turn[source="bot"], [data-testid*="bot-message"], [class*="BotMessage"]',
+                    'p, .ac-textBlock'
+                )
+                if not current:
+                    blocks = await self.page.query_selector_all(response_sels)
+                    if blocks:
+                        texts = [await b.text_content() or "" for b in blocks]
+                        current = "\n".join(t.strip() for t in texts if t.strip())
+                    else:
+                        current = await self._js_extract()
 
                 if current != last_text:
                     last_text = current
                     stable_since = asyncio.get_running_loop().time()
                 elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
-                    return current
+                    return self._clean_response(current)
             except Exception:
                 pass
             await asyncio.sleep(0.8)
 
-        # Final JS attempt before giving up
         if not last_text:
             last_text = await self._js_extract()
-
-        return last_text or "[No response captured]"
+        return self._clean_response(last_text) or "[No response captured]"

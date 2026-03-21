@@ -14,7 +14,7 @@ class Grok(BaseAI):
         await asyncio.sleep(3)
         await self.assert_authenticated()
 
-        # Check if we land on a ready state
+        # Check if we land on a ready state (textarea OR contenteditable)
         try:
             await self.page.wait_for_selector(
                 'textarea, [contenteditable="true"]',
@@ -24,10 +24,22 @@ class Grok(BaseAI):
             raise RuntimeError(f"Grok: input not found — {e}")
 
         try:
-            input_sel = 'textarea[placeholder], textarea'
+            # Grok uses contenteditable div in newer UI, textarea in older
+            input_sel = (
+                'textarea[placeholder], '
+                'div[contenteditable="true"][aria-label], '
+                'div[contenteditable="true"][data-testid*="input"], '
+                'div[contenteditable="true"][role="textbox"], '
+                'div[contenteditable="true"], '
+                'textarea'
+            )
             el = await self.page.wait_for_selector(input_sel, timeout=8000)
             await el.click()
-            await el.fill(prompt)
+            tag = await el.evaluate("el => el.tagName.toLowerCase()")
+            if tag == "textarea":
+                await el.fill(prompt)
+            else:
+                await self.page.keyboard.type(prompt, delay=10)
             await asyncio.sleep(0.5)
 
             try:
@@ -51,24 +63,25 @@ class Grok(BaseAI):
 
         while asyncio.get_running_loop().time() < deadline:
             try:
-                # Grok uses data-testid="bot-message" or role="assistant"
-                blocks = await self.page.query_selector_all(
-                    '[data-testid="bot-message"] p, '
+                # Try multiple known Grok response container selectors
+                current = await self._collect_last_in(
                     '[data-testid="bot-message"], '
-                    '.prose p'
+                    '[data-testid="message"]:not([data-testid*="user"]), '
+                    'div[class*="GrokMessage"], div[class*="AssistantMessage"], '
+                    'article[class*="message"]',
+                    'p, span[class*="Text"], div[class*="prose"]'
                 )
-                if blocks:
-                    texts = [await b.text_content() or "" for b in blocks]
-                    current = "\n".join(t.strip() for t in texts if t.strip())
-                    if current != last_text:
-                        last_text = current
-                        stable_since = asyncio.get_running_loop().time()
-                    elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
-                        return current
+                if current and len(current) < 80:
+                    current = ""  # too short to be a real response
+                if current != last_text:
+                    last_text = current
+                    stable_since = asyncio.get_running_loop().time()
+                elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
+                    return self._clean_response(current)
             except Exception:
                 pass
             await asyncio.sleep(0.8)
 
         if not last_text:
             last_text = await self._js_extract()
-        return last_text or "[No response captured]"
+        return self._clean_response(last_text) or "[No response captured]"

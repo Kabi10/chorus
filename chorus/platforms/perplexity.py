@@ -9,14 +9,15 @@ class Perplexity(BaseAI):
     icon         = "🔭"
     platform_key = "perplexity"
 
-    # Broader response selectors for 2025 Perplexity UI
+    # Response selectors for 2025 Perplexity UI
+    # NOTE: avoid bare .prose p — it matches the question display at the top of results
     _RESPONSE_SELS = (
-        ".prose p, "
         "[class*='answer'] p, [class*='Answer'] p, "
         "[data-testid*='answer'] p, "
         "div[data-testid='ppl-response'] p, "
         "[class*='result'] p, .result-block p, "
-        "[class*='markdown'] p"
+        "[class*='markdown'] p, "
+        "[class*='prose']:not([class*='question']) p"
     )
 
     # Input selectors covering all known Perplexity UI variants
@@ -69,9 +70,13 @@ class Perplexity(BaseAI):
                 blocks = await self.page.query_selector_all(self._RESPONSE_SELS)
                 if blocks:
                     texts = [await b.text_content() or "" for b in blocks]
-                    current = "\n".join(t.strip() for t in texts if t.strip())
+                    # Strip source/footnote list items (Perplexity appends numbered sources)
+                    raw = "\n".join(t.strip() for t in texts if t.strip() and not t.strip().startswith(("http", "www")))
+                    current = raw
                 else:
-                    current = await self._collect_blocks()
+                    current = ""
+                if current and len(current) < 100:
+                    current = ""  # too short — likely just a question label, not the answer
                 if current != last_text:
                     last_text = current
                     stable_since = asyncio.get_running_loop().time()
@@ -83,4 +88,4 @@ class Perplexity(BaseAI):
 
         if not last_text:
             last_text = await self._js_extract()
-        return last_text or "[No response captured]"
+        return self._clean_response(last_text) or "[No response captured]"

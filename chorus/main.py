@@ -74,8 +74,72 @@ def _classify_error(platform: str, exc: Exception, page_text: str = "") -> tuple
 
 _CHORUS_DIR  = Path.home() / ".chorus"
 _CHORUS_DIR.mkdir(parents=True, exist_ok=True)
-HISTORY_FILE = _CHORUS_DIR / "chorus_history.json"
+HISTORY_FILE  = _CHORUS_DIR / "chorus_history.json"
+TEMPLATES_FILE = _CHORUS_DIR / "templates.json"
 MAX_HISTORY  = 100
+
+_BUILTIN_TEMPLATES = [
+    {
+        "id": "builtin-code-review",
+        "name": "Code Review",
+        "description": "Review code for bugs, security issues, and improvements",
+        "prompt": "Review the following code for bugs, security issues, and improvements:\n\n```\n[paste code here]\n```",
+        "builtin": True,
+    },
+    {
+        "id": "builtin-architecture",
+        "name": "Architecture Advice",
+        "description": "Get architecture recommendations for your system requirements",
+        "prompt": "I'm designing a system with these requirements: [describe]. What architecture would you recommend and why?",
+        "builtin": True,
+    },
+    {
+        "id": "builtin-debugging",
+        "name": "Debugging",
+        "description": "Get help diagnosing and fixing an error",
+        "prompt": "I'm getting this error: [error]. Here's the relevant code: [code]. What's wrong and how do I fix it?",
+        "builtin": True,
+    },
+    {
+        "id": "builtin-brainstorm",
+        "name": "Brainstorm",
+        "description": "Generate creative ideas with pros and cons",
+        "prompt": "Help me brainstorm [topic]. Give me at least 5 creative ideas with pros and cons for each.",
+        "builtin": True,
+    },
+    {
+        "id": "builtin-explain",
+        "name": "Explain Concept",
+        "description": "Get a clear explanation with practical examples",
+        "prompt": "Explain [concept] as if I'm a senior developer who hasn't used it before. Include practical examples.",
+        "builtin": True,
+    },
+]
+
+_custom_templates: list[dict] = []
+
+
+def load_templates():
+    global _custom_templates
+    if TEMPLATES_FILE.exists():
+        try:
+            _custom_templates = json.loads(TEMPLATES_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            _custom_templates = []
+    else:
+        _custom_templates = []
+
+
+def save_templates():
+    try:
+        TEMPLATES_FILE.write_text(
+            json.dumps(_custom_templates, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        pass
+
+
 # Read HTML into memory at startup — importlib.resources returns a Traversable, not a real
 # filesystem path in installed wheels. Read content directly; never store as Path.
 _HTML_CONTENT: str = importlib.resources.files("chorus").joinpath("frontend/index.html").read_text(encoding="utf-8")
@@ -139,10 +203,16 @@ class QueryRequest(BaseModel):
 class FollowUpRequest(BaseModel):
     prompt: str
 
+class TemplateCreate(BaseModel):
+    name:        str
+    description: str = ""
+    prompt:      str
+
 
 @app.on_event("startup")
 async def startup():
     load_history()
+    load_templates()
     await browser_manager.start()
     print("Chorus running at http://localhost:4747")
 
@@ -166,6 +236,41 @@ def list_platforms():
 @app.get("/api/platforms/{platform}/profiles")
 def list_profiles(platform: str):
     return browser_manager.list_profiles(platform)
+
+
+@app.get("/api/templates")
+def list_templates():
+    """Return all templates: built-ins first, then custom."""
+    return _BUILTIN_TEMPLATES + _custom_templates
+
+
+@app.post("/api/templates", status_code=201)
+def create_template(body: TemplateCreate):
+    """Create a custom template."""
+    new_tmpl = {
+        "id":          f"custom-{uuid.uuid4().hex[:8]}",
+        "name":        body.name.strip(),
+        "description": body.description.strip(),
+        "prompt":      body.prompt,
+        "builtin":     False,
+    }
+    _custom_templates.append(new_tmpl)
+    save_templates()
+    return new_tmpl
+
+
+@app.delete("/api/templates/{template_id}")
+def delete_template(template_id: str):
+    """Delete a custom template. Built-in templates cannot be deleted."""
+    global _custom_templates
+    if template_id.startswith("builtin-"):
+        raise HTTPException(400, "Built-in templates cannot be deleted")
+    before = len(_custom_templates)
+    _custom_templates = [t for t in _custom_templates if t["id"] != template_id]
+    if len(_custom_templates) == before:
+        raise HTTPException(404, "Template not found")
+    save_templates()
+    return {"ok": True}
 
 
 @app.post("/api/platforms/{platform}/profiles/{profile_name}")
@@ -219,6 +324,7 @@ async def run_platform(session_id: str, platform_key: str, prompt: str, profile:
         PlatformClass = PLATFORMS[platform_key]
         ai = PlatformClass(page)
 
+        ai._last_prompt = prompt  # needed for _clean_response prompt-stripping
         await ws_manager.send_status(session_id, platform_key, "typing", "Submitting prompt…")
         await asyncio.wait_for(ai.submit_prompt(prompt), timeout=platform_timeout)
 
@@ -404,6 +510,7 @@ async def run_followup_platform(session_id: str, platform_key: str, prompt: str)
         page = await browser_manager.get_page(platform_key, "default")
         PlatformClass = PLATFORMS[platform_key]
         ai = PlatformClass(page)
+        ai._last_prompt = prompt  # needed for _clean_response prompt-stripping
 
         # Type into the existing input (no navigate — keeps conversation context)
         input_sel = ai._input_sel()

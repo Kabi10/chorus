@@ -45,16 +45,22 @@ class Gemini(BaseAI):
 
         while asyncio.get_running_loop().time() < deadline:
             try:
-                current = await self._collect_blocks()
+                # Scope to LAST model-response container — no page-wide fallback
+                current = await self._collect_last_in(
+                    'model-response, [class*="response-container"], .response-content',
+                    'p, [class*="markdown"] p'
+                )
+                if current and len(current) < 80:
+                    current = ""  # too short to be a real response
                 if current != last_text:
                     last_text = current
                     stable_since = asyncio.get_running_loop().time()
                 elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
-                    return current
+                    return self._clean_response(current)
             except Exception:
                 pass
             await asyncio.sleep(0.8)
 
         if not last_text:
             last_text = await self._js_extract()
-        return last_text or "[No response captured]"
+        return self._clean_response(last_text) or "[No response captured]"
