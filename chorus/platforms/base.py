@@ -194,8 +194,9 @@ class BaseAI(ABC):
             flags=re.IGNORECASE,
         )
 
-        # Remove inline citation markers like [1], [^2], [12]
+        # Remove inline citation markers like [1], [^2], [12], and Perplexity's +3 style
         text = re.sub(r"\s*\[\^?\d+\]", "", text)
+        text = re.sub(r"\s*\+\d+\b", "", text)  # Perplexity "+3" citation counts
 
         # Strip trailing source-citation lines like "Some Title - domain.com"
         # or "Some Title | source.com" appended by Copilot / Perplexity
