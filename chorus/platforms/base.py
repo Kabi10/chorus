@@ -100,9 +100,19 @@ class BaseAI(ABC):
 
     # ── Convenience helpers ───────────────────────────────────────
 
+    async def _js_click(self, el) -> None:
+        """Click via JS evaluate — bypasses Playwright actionability checks (detached DOM, off-screen)."""
+        try:
+            await el.evaluate("el => el.click()")
+        except Exception:
+            pass
+
     async def _type_into(self, selector: str, text: str, use_fill: bool = False):
         el = await self.page.wait_for_selector(selector, timeout=15000)
-        await el.click()
+        try:
+            await el.click()
+        except Exception:
+            await self._js_click(el)
         if use_fill:
             await el.fill(text)
         else:
@@ -176,6 +186,9 @@ class BaseAI(ABC):
         if not text:
             return text
 
+        # Strip Grok web-search preamble: "Searching the webN results"
+        text = re.sub(r"^Searching the web\s*\d*\s*results?\s*", "", text, flags=re.IGNORECASE)
+
         # Strip prompt text if it leaked to the start of the response
         if self._last_prompt:
             snippet = self._last_prompt[:50]
@@ -238,15 +251,32 @@ class BaseAI(ABC):
         try:
             result = await self.page.evaluate(
                 """(promptSnippet) => {
-                    const candidates = Array.from(
-                        document.querySelectorAll('p, [role="paragraph"], .markdown p')
+                    // Known garbage patterns from various platform UIs
+                    const GARBAGE = ['cookie', 'Cookie Policy', 'privacy policy', 'We use cookies',
+                                     'Sign in to', 'Log in to', 'Create account', 'Terms of Service',
+                                     'By continuing', 'Accept all'];
+                    // Try specific selectors first, fall back to broader scan of main content
+                    const specific = document.querySelectorAll(
+                        'p, [role="paragraph"], .markdown p, ' +
+                        'main p, article p, [role="main"] p, ' +
+                        '[class*="message"] p, [class*="response"] p'
                     );
+                    let candidates = Array.from(specific);
+                    // If very few results, also try div/span text blocks in main area
+                    if (candidates.length < 3) {
+                        const broad = document.querySelectorAll('main *, article *, [role="main"] *');
+                        candidates = [...candidates, ...Array.from(broad)];
+                    }
+                    const seen = new Set();
                     return candidates
                         .map(el => el.textContent.trim())
-                        .filter(t => (
-                            t.length > 40 &&
-                            (!promptSnippet || !t.includes(promptSnippet.substring(0, 30)))
-                        ))
+                        .filter(t => {
+                            if (t.length < 15 || seen.has(t)) return false;
+                            if (GARBAGE.some(g => t.includes(g))) return false;
+                            if (promptSnippet && t.includes(promptSnippet.substring(0, 30))) return false;
+                            seen.add(t);
+                            return true;
+                        })
                         .join('\\n');
                 }""",
                 prompt_snippet,

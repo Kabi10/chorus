@@ -4,7 +4,7 @@ from .base import BaseAI
 
 class Mistral(BaseAI):
     name         = "Mistral"
-    url          = "https://chat.mistral.ai"
+    url          = "https://chat.mistral.ai/chat"
     color        = "#ff7000"
     icon         = "🔶"
     platform_key = "mistral"
@@ -46,10 +46,15 @@ class Mistral(BaseAI):
 
         while asyncio.get_running_loop().time() < deadline:
             try:
-                # Scope to LAST assistant message only — no page-wide fallback
+                # Le Chat current DOM: assistant turns use [data-message-role="assistant"]
+                # or .message-content inside a message bubble
                 current = await self._collect_last_in(
-                    '[data-role="assistant"], [class*="assistant-message"]',
-                    'p'
+                    '[data-message-role="assistant"], '
+                    '[class*="BotMessage"], '
+                    '[class*="bot-message"], '
+                    '[data-role="assistant"], '
+                    '[class*="assistant-message"]',
+                    'p, [class*="markdown"] p, .prose p'
                 )
                 if current and len(current) < 80:
                     current = ""  # too short to be a real response

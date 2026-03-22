@@ -27,6 +27,8 @@ from chorus.platforms.grok import Grok
 from chorus.platforms.copilot import Copilot
 from chorus.platforms.deepseek import DeepSeek
 from chorus.platforms.mistral import Mistral
+from chorus.platforms.meta_ai import MetaAI
+from chorus.platforms.huggingchat import HuggingChat
 
 _UNIVERSAL_RATE_SIGNALS = [
     "too many requests", "rate limit", "try again later", "quota exceeded",
@@ -153,6 +155,8 @@ PLATFORMS = {
     "copilot":    Copilot,
     "deepseek":   DeepSeek,
     "mistral":    Mistral,
+    "meta_ai":    MetaAI,
+    "huggingchat": HuggingChat,
 }
 
 _ONBOARDING_FILE: Path   = Path.home() / ".chorus" / "onboarding.json"
@@ -167,6 +171,8 @@ PLATFORM_META = {
     "copilot":    {"name": "Copilot",    "color": "#0078d4", "icon": "🪟"},
     "deepseek":   {"name": "DeepSeek",   "color": "#4d6bfe", "icon": "🔵"},
     "mistral":    {"name": "Mistral",    "color": "#ff7000", "icon": "🔶"},
+    "meta_ai":    {"name": "Meta AI",    "color": "#0082fb", "icon": "🔷"},
+    "huggingchat": {"name": "HuggingChat", "color": "#ff9d00", "icon": "🤗"},
 }
 
 app = FastAPI(title="Chorus")

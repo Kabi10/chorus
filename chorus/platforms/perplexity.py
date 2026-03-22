@@ -12,12 +12,10 @@ class Perplexity(BaseAI):
     # Response selectors for 2025 Perplexity UI
     # NOTE: avoid bare .prose p — it matches the question display at the top of results
     _RESPONSE_SELS = (
-        "[class*='answer'] p, [class*='Answer'] p, "
-        "[data-testid*='answer'] p, "
         "div[data-testid='ppl-response'] p, "
-        "[class*='result'] p, .result-block p, "
+        "[data-testid*='answer-text'] p, "
         "[class*='markdown'] p, "
-        "[class*='prose']:not([class*='question']) p"
+        "[class*='prose']:not([class*='question']):not([class*='nav']):not([class*='tab']) p"
     )
 
     # Input selectors covering all known Perplexity UI variants
@@ -71,12 +69,12 @@ class Perplexity(BaseAI):
                 if blocks:
                     texts = [await b.text_content() or "" for b in blocks]
                     # Strip source/footnote list items (Perplexity appends numbered sources)
-                    raw = "\n".join(t.strip() for t in texts if t.strip() and not t.strip().startswith(("http", "www")))
+                    raw = "\n".join(t.strip() for t in texts if len(t.strip()) > 40 and not t.strip().startswith(("http", "www")))
                     current = raw
                 else:
                     current = ""
-                if current and len(current) < 100:
-                    current = ""  # too short — likely just a question label, not the answer
+                if current and len(current) < 15:
+                    current = ""  # too short — streaming artifact or question label
                 if current != last_text:
                     last_text = current
                     stable_since = asyncio.get_running_loop().time()
@@ -86,6 +84,36 @@ class Perplexity(BaseAI):
                 pass
             await asyncio.sleep(0.8)
 
+        if not last_text:
+            # Scoped JS fallback: look inside known answer containers and require
+            # substantial paragraphs (> 60 chars) to skip UI chrome labels.
+            try:
+                last_text = await self.page.evaluate(
+                    """(promptSnippet) => {
+                        const containers = document.querySelectorAll(
+                            '[class*="answer"], [class*="Answer"], [data-testid*="answer"], ' +
+                            'div[data-testid="ppl-response"], [class*="result"], [class*="markdown"], ' +
+                            '[class*="prose"]'
+                        );
+                        const seen = new Set();
+                        const texts = [];
+                        containers.forEach(c => {
+                            c.querySelectorAll('p').forEach(p => {
+                                const t = p.textContent.trim();
+                                if (t.length > 60 && !seen.has(t) &&
+                                    !t.startsWith('http') && !t.startsWith('www') &&
+                                    !(promptSnippet && t.includes(promptSnippet.substring(0, 30)))) {
+                                    seen.add(t);
+                                    texts.push(t);
+                                }
+                            });
+                        });
+                        return texts.join('\\n');
+                    }""",
+                    self._last_prompt[:60]
+                ) or ""
+            except Exception:
+                last_text = ""
         if not last_text:
             last_text = await self._js_extract()
         return self._clean_response(last_text) or "[No response captured]"

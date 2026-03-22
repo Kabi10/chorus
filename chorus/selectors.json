@@ -117,27 +117,36 @@
     "timeout_seconds": 60,
     "rate_limit_signals": ["rate limit", "Too many requests", "You've reached your daily limit"],
     "input": [
-      "textarea[placeholder]",
+      "textarea[placeholder*='Ask']",
+      "textarea[placeholder*='Message']",
+      "textarea[placeholder*='Grok']",
+      "div[contenteditable='true'][aria-label]",
+      "div[contenteditable='true'][role='textbox']",
+      "div[contenteditable='true']",
       "textarea"
     ],
     "send_button": [
-      "button[aria-label*='Send']",
-      "button[data-testid*='send']",
+      "button[aria-label*='Send']:not([disabled])",
+      "button[data-testid*='send']:not([disabled])",
       "button[type='submit']:not([disabled])"
     ],
     "response": [
       "[data-testid='bot-message'] p",
-      "[data-testid='bot-message']",
+      "[data-testid='message']:not([data-testid*='user']) p",
+      "[class*='response'] p",
       ".prose p"
     ],
     "auth_check": [
-      "input[autocomplete='username']",
-      "input[name='text']",
-      "a[href*='login']"
+      "input[type='email']",
+      "input[type='password']",
+      "a[href*='login']",
+      "a[href*='signin']",
+      "button[data-testid='loginButton']"
     ],
     "loading_indicator": [
       "[aria-label='Loading']",
-      ".loading-spinner"
+      "[class*='loading']",
+      "[class*='thinking']"
     ]
   },
   "copilot": {
@@ -205,28 +214,88 @@
   },
   "mistral": {
     "timeout_seconds": 60,
-    "rate_limit_signals": ["Too many requests", "rate limit", "quota"],
+    "rate_limit_signals": ["Too many requests", "rate limit", "quota", "You've reached your limit"],
     "input": [
       "textarea[placeholder*='Ask']",
       "textarea[placeholder*='Message']",
+      "div[contenteditable='true'][aria-label]",
+      "div[contenteditable='true']",
       "textarea"
     ],
     "send_button": [
-      "button[aria-label*='Send']",
+      "button[aria-label*='Send']:not([disabled])",
       "button[type='submit']:not([disabled])"
     ],
     "response": [
+      "[data-message-role='assistant'] p",
+      "[class*='BotMessage'] p",
+      "[class*='bot-message'] p",
       "[data-role='assistant'] p",
       ".message-content p",
-      "[class*='assistant-message'] p"
+      "[class*='assistant-message'] p",
+      ".prose p"
     ],
     "auth_check": [
       "input[type='email']",
-      "form[action*='login']"
+      "form[action*='login']",
+      "a[href*='login']"
     ],
     "loading_indicator": [
       ".generating",
-      "[aria-label*='generating']"
+      "[aria-label*='generating']",
+      "[class*='loading']"
+    ]
+  },
+  "meta_ai": {
+    "timeout_seconds": 60,
+    "rate_limit_signals": ["Too many requests", "rate limit", "try again"],
+    "input": [
+      "div[contenteditable='true'][aria-label*='message']",
+      "div[contenteditable='true'][aria-label*='Ask']",
+      "textarea[placeholder*='Ask']",
+      "textarea[placeholder*='Message']",
+      "div[contenteditable='true']"
+    ],
+    "send_button": [
+      "button[aria-label*='Send']:not([disabled])",
+      "button[type='submit']:not([disabled])"
+    ],
+    "response": [
+      "[data-testid='message-text'] p",
+      "[class*='assistant-message'] p",
+      "[class*='AssistantMessage'] p",
+      ".prose p",
+      "[role='presentation'] p"
+    ],
+    "auth_check": [
+      "input[type='email']",
+      "a[href*='login']",
+      "button[data-testid*='login']"
+    ],
+    "loading_indicator": [
+      "[class*='loading']",
+      "[aria-label*='loading']",
+      "[class*='thinking']"
+    ]
+  },
+  "huggingchat": {
+    "timeout_seconds": 90,
+    "rate_limit_signals": ["Too many requests", "rate limit", "quota"],
+    "input": [
+      "textarea[placeholder='Ask anything']",
+      "textarea"
+    ],
+    "send_button": [],
+    "response": [
+      "[data-message-role='assistant'] div",
+      "[data-message-role='assistant'] p"
+    ],
+    "auth_check": [
+      "a[href='/chat/login']"
+    ],
+    "loading_indicator": [
+      "button[title='Stop generating']",
+      "button[aria-label*='Stop']"
     ]
   }
 }

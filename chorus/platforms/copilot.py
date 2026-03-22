@@ -30,8 +30,18 @@ class Copilot(BaseAI):
                 'textarea'
             )
             el = await self.page.wait_for_selector(input_sel, timeout=15000)
-            await el.click()
-            tag = await el.evaluate("el => el.tagName.toLowerCase()")
+            # Use JS click to avoid "Element is not attached to DOM" on React re-renders
+            try:
+                await el.click()
+            except Exception:
+                await self._js_click(el)
+            await asyncio.sleep(0.5)  # wait for re-render to settle
+            try:
+                tag = await el.evaluate("el => el.tagName.toLowerCase()")
+            except Exception:
+                # Element detached after React re-render — re-query
+                el = await self.page.wait_for_selector(input_sel, timeout=8000)
+                tag = await el.evaluate("el => el.tagName.toLowerCase()")
             if tag == "textarea":
                 await el.fill(prompt)
             else:
@@ -43,9 +53,12 @@ class Copilot(BaseAI):
                     'button[aria-label*="Send"], button[aria-label*="Submit"], '
                     'button[data-testid*="send"], '
                     'button[type="submit"]:not([disabled])',
-                    timeout=3000
+                    timeout=4000
                 )
-                await send_btn.click()
+                try:
+                    await send_btn.click()
+                except Exception:
+                    await self._js_click(send_btn)
             except Exception:
                 await self.page.keyboard.press("Enter")
         except Exception as e:
@@ -98,11 +111,37 @@ class Copilot(BaseAI):
 
         while asyncio.get_running_loop().time() < deadline:
             try:
+                # Broad JS-based extraction — look for AI response containers after user's prompt
+                js_broad = await self.page.evaluate("""(promptSnippet) => {
+                    // Try specific AI-response selectors first
+                    const aiSels = [
+                        '[data-testid*="ai-response"]', '[data-testid*="assistant"]',
+                        '[class*="ai-response"]', '[class*="assistant-message"]',
+                        '[class*="bot-response"]', '[class*="copilot-message"]',
+                    ];
+                    for (const sel of aiSels) {
+                        const els = document.querySelectorAll(sel);
+                        if (!els.length) continue;
+                        const last = els[els.length - 1];
+                        const text = last.textContent.trim();
+                        if (text.length > 20 && !text.includes(promptSnippet.substring(0, 20))) return text;
+                    }
+                    // Collect all p/li > 40 chars not containing the prompt
+                    const seen = new Set();
+                    const kept = Array.from(document.querySelectorAll('p, li'))
+                        .map(el => el.textContent.trim())
+                        .filter(t => t.length > 40 && !t.includes(promptSnippet.substring(0, 20)) && !seen.has(t) && seen.add(t));
+                    return kept.length > 0 ? kept.join('\\n') : '';
+                }""", self._last_prompt[:60])
+                js_broad = (js_broad or "").strip()
+
                 # Try scoping to the last bot message container first
                 current = await self._collect_last_in(
                     'cib-chat-turn[source="bot"], [data-testid*="bot-message"], [class*="BotMessage"]',
                     'p, .ac-textBlock'
                 )
+                if not current:
+                    current = js_broad
                 if not current:
                     blocks = await self.page.query_selector_all(response_sels)
                     if blocks:

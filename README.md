@@ -150,9 +150,33 @@ chorus/
 
 ---
 
+## Known Limitations
+
+| Limitation | Notes |
+|---|---|
+| **Chromium required** | Playwright only supports Chromium for persistent sessions |
+| **Memory usage** | 8 concurrent browser contexts use ~1–2 GB RAM |
+| **Selector drift** | Platform UIs change — selectors in `selectors.json` may need updates. PRs for fixes are the fastest path. |
+| **Rate limits** | Free-tier accounts can hit rate limits; the per-platform Retry button handles most cases |
+| **Follow-up context** | Some platforms expire their conversation tab after inactivity |
+
+---
+
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome — especially new platform connectors, better selectors for existing platforms, and UI improvements.
+See [CONTRIBUTING.md](CONTRIBUTING.md). PRs welcome — especially:
+
+- **Selector fixes** when a platform updates its UI (most common need)
+- New platform connectors
+- UI improvements
+
+## Security
+
+See [SECURITY.md](SECURITY.md). Chorus runs entirely on `127.0.0.1` — no data leaves your machine through Chorus itself.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

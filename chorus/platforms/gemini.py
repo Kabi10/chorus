@@ -11,15 +11,21 @@ class Gemini(BaseAI):
 
     async def submit_prompt(self, prompt: str) -> None:
         await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)
-        await asyncio.sleep(3)
+        await asyncio.sleep(5)
         await self.assert_authenticated()
 
         try:
-            el = await self.page.wait_for_selector(self._input_sel(), timeout=15000)
+            el = await self.page.wait_for_selector(self._input_sel(), timeout=20000)
             await el.click()
-            tag = await el.evaluate("el => el.tagName.toLowerCase()")
+            try:
+                tag = await el.evaluate("el => el.tagName.toLowerCase()")
+            except Exception:
+                tag = ""
             if tag == "textarea":
-                await el.fill(prompt)
+                try:
+                    await el.fill(prompt)
+                except Exception:
+                    await self.page.keyboard.type(prompt, delay=10)
             else:
                 await self.page.keyboard.type(prompt, delay=10)
             await asyncio.sleep(0.5)
@@ -45,13 +51,29 @@ class Gemini(BaseAI):
 
         while asyncio.get_running_loop().time() < deadline:
             try:
-                # Scope to LAST model-response container — no page-wide fallback
+                # Scope to LAST model-response container
                 current = await self._collect_last_in(
-                    'model-response, [class*="response-container"], .response-content',
+                    'model-response, [class*="response-container"], .response-content, '
+                    '[data-message-author-role="model"], [data-chunk-index]',
                     'p, [class*="markdown"] p'
                 )
-                if current and len(current) < 80:
-                    current = ""  # too short to be a real response
+                if not current:
+                    # JS fallback scoped to Gemini response containers only
+                    current = await self.page.evaluate("""() => {
+                        const sels = ['model-response', '[data-message-author-role="model"]',
+                                      '[class*="response-container"]', '[class*="model-response"]'];
+                        for (const sel of sels) {
+                            const els = document.querySelectorAll(sel);
+                            if (!els.length) continue;
+                            const last = els[els.length - 1];
+                            const ps = Array.from(last.querySelectorAll('p, li')).map(e => e.textContent.trim()).filter(t => t.length > 2);
+                            if (ps.length) return ps.join('\\n');
+                            if (last.textContent.trim().length > 2) return last.textContent.trim();
+                        }
+                        return '';
+                    }""") or ""
+                if current and len(current) < 2:
+                    current = ""
                 if current != last_text:
                     last_text = current
                     stable_since = asyncio.get_running_loop().time()

@@ -13,12 +13,14 @@ If the browser context dies mid-session (user closes Chrome, CDP drops, etc.),
 get_page() automatically reconnects before returning the page.
 """
 import asyncio
+import os
 import aiohttp
 from pathlib import Path
 from playwright.async_api import async_playwright, BrowserContext, Page
 
 PROFILE_DIR = Path.home() / ".chorus" / "profile"
 CDP_URL = "http://localhost:9222"
+HEADLESS = os.environ.get("CHORUS_HEADLESS", "0") == "1"
 
 
 async def _cdp_available() -> bool:
@@ -66,20 +68,54 @@ class BrowserManager:
         self._using_cdp = False
         self._browser = None
         PROFILE_DIR.mkdir(parents=True, exist_ok=True)
-        launch_args = dict(
-            user_data_dir=str(PROFILE_DIR),
-            headless=False,
-            args=["--disable-blink-features=AutomationControlled"],
-            viewport={"width": 1280, "height": 800},
-        )
-        try:
+
+        # Remove stale lock files that prevent Chrome from launching after an
+        # unclean shutdown (Chrome exits with code 21 when profile is locked).
+        for lock_path in [
+            PROFILE_DIR / "lockfile",
+            PROFILE_DIR / "SingletonLock",
+            PROFILE_DIR / "Default" / "LOCK",
+        ]:
+            try:
+                lock_path.unlink(missing_ok=True)
+            except OSError:
+                pass  # file is held by a live process — leave it alone
+
+        base_args = [
+            "--disable-blink-features=AutomationControlled",
+            "--disable-infobars",
+            "--no-sandbox",
+        ]
+        if HEADLESS:
+            # Bundled Playwright Chromium handles headless + persistent profile
+            # more reliably than system Chrome. Add extra stability flags.
+            base_args += [
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-setuid-sandbox",
+            ]
             self._ctx = await self._playwright.chromium.launch_persistent_context(
-                channel="chrome", **launch_args
+                str(PROFILE_DIR),
+                headless=True,
+                args=base_args,
+                viewport={"width": 1280, "height": 800},
             )
-        except Exception:
-            self._ctx = await self._playwright.chromium.launch_persistent_context(
-                **launch_args
+            print("[Chorus] Running in headless mode (no browser window).")
+        else:
+            launch_args = dict(
+                user_data_dir=str(PROFILE_DIR),
+                headless=False,
+                args=base_args,
+                viewport={"width": 1280, "height": 800},
             )
+            try:
+                self._ctx = await self._playwright.chromium.launch_persistent_context(
+                    channel="chrome", **launch_args
+                )
+            except Exception:
+                self._ctx = await self._playwright.chromium.launch_persistent_context(
+                    **launch_args
+                )
 
     async def _ensure_context(self):
         """If the browser context has been closed, reconnect transparently."""
@@ -114,7 +150,7 @@ class BrowserManager:
     async def stop(self):
         if self._using_cdp:
             if self._browser:
-                await self._browser.disconnect()
+                await self._browser.close()  # disconnects from CDP without closing Chrome
         else:
             if self._ctx:
                 await self._ctx.close()
