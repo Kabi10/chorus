@@ -6,6 +6,7 @@ from pathlib import Path
 ALL_PLATFORMS = [
     "gemini", "chatgpt", "claude", "perplexity",
     "grok", "copilot", "deepseek", "mistral",
+    "meta_ai", "huggingchat",
 ]
 
 _DEFAULT_STATE = {p: {"status": "pending"} for p in ALL_PLATFORMS}

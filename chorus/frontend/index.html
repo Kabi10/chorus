@@ -149,12 +149,18 @@ function useChorus(toast){
 
   // WebSocket
   const wsRef=useRef(null);
+  const backoffRef=useRef(1000);
   const connectWS=useCallback(()=>{
     try{
       const ws=new WebSocket(`ws://${location.host}/ws`);
       wsRef.current=ws;
-      ws.onopen=()=>setConnected(true);
-      ws.onclose=()=>{setConnected(false);setTimeout(connectWS,4000)};
+      ws.onopen=()=>{setConnected(true); backoffRef.current=1000;};
+      ws.onclose=()=>{
+        setConnected(false);
+        const delay = backoffRef.current + Math.random() * 500;
+        backoffRef.current = Math.min(8000, backoffRef.current * 2);
+        setTimeout(connectWS, delay);
+      };
       ws.onerror=()=>{};
       ws.onmessage=(e)=>{
         try{

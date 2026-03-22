@@ -2,9 +2,10 @@
 
 > Send one prompt to every major AI. See where they agree.
 
-![Chorus demo](docs/demo.gif)
+![Chorus UI Flow View](docs/flow.png)
+![Chorus Onboarding View](docs/screenshot.png)
 
-**Chorus** is a browser-native multi-AI consultation tool. Write one prompt, send it to ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, Mistral, and Copilot simultaneously — **no API keys required**. Uses your existing logged-in browser sessions and collects all responses into a D3 flowchart with consensus analysis, sentence-level diff, and Markdown export.
+**Chorus** is a browser-native multi-AI consultation tool. Write one prompt, send it to ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, Mistral, Meta AI, HuggingChat and Copilot simultaneously — **no API keys required**. Uses your existing logged-in browser sessions and collects all responses into a D3 flowchart with consensus analysis, sentence-level diff, and Markdown export.
 
 ---
 
@@ -13,7 +14,7 @@
 | Other tools | Chorus |
 |---|---|
 | Require expensive API keys | Zero API keys — uses your browser sessions |
-| Compare 2-3 AIs | 8 AIs simultaneously |
+| Compare 2-3 AIs | 10 AIs simultaneously |
 | Raw text side-by-side | D3 tree + Consensus + Diff views |
 | No account switching | Per-platform profile manager built in |
 | Responses lost on refresh | Full history persisted to disk |
@@ -33,6 +34,8 @@
 | 🪟 Copilot | copilot.microsoft.com |
 | 🔵 DeepSeek | chat.deepseek.com |
 | 🔶 Mistral | chat.mistral.ai |
+| 🔷 Meta AI | meta.ai |
+| 🤗 HuggingChat | huggingface.co/chat |
 
 ---
 

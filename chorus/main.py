@@ -1,20 +1,30 @@
 import asyncio
 import importlib.resources
 import json
-import json as _json
+import logging
+import os
 import sys
+import tempfile
 import threading
 import uuid
 import webbrowser
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import uvicorn
 from playwright.sync_api import sync_playwright
 from playwright.async_api import TimeoutError as PlaywrightTimeout
+
+log = logging.getLogger("chorus")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 from chorus.browser import manager as browser_manager
 from chorus.websocket_manager import ws_manager
@@ -37,15 +47,11 @@ _UNIVERSAL_RATE_SIGNALS = [
 
 def _classify_error(platform: str, exc: Exception, page_text: str = "") -> tuple[str, str]:
     """Map an exception + page content to (error_code, human_message)."""
+    from chorus.platforms.base import ALL_SELECTORS
     page_lower = page_text.lower()
 
     # Check rate limit signals (platform-specific + universal)
-    import importlib.resources as _ir, json as _j
-    try:
-        _sel = _j.loads(_ir.files("chorus").joinpath("selectors.json").read_text())
-    except Exception:
-        _sel = {}
-    signals = list(_sel.get(platform, {}).get("rate_limit_signals", []))
+    signals = list(ALL_SELECTORS.get(platform, {}).get("rate_limit_signals", []))
     signals += _UNIVERSAL_RATE_SIGNALS
     if any(s.lower() in page_lower for s in signals):
         platform_name = PLATFORM_META.get(platform, {}).get("name", platform.capitalize())
@@ -79,6 +85,8 @@ _CHORUS_DIR.mkdir(parents=True, exist_ok=True)
 HISTORY_FILE  = _CHORUS_DIR / "chorus_history.json"
 TEMPLATES_FILE = _CHORUS_DIR / "templates.json"
 MAX_HISTORY  = 100
+MAX_SESSIONS = 50
+MAX_PROMPT_LENGTH = 15_000
 
 _BUILTIN_TEMPLATES = [
     {
@@ -127,6 +135,7 @@ def load_templates():
         try:
             _custom_templates = json.loads(TEMPLATES_FILE.read_text(encoding="utf-8"))
         except Exception:
+            log.warning("Failed to load templates from %s, starting fresh", TEMPLATES_FILE)
             _custom_templates = []
     else:
         _custom_templates = []
@@ -134,12 +143,9 @@ def load_templates():
 
 def save_templates():
     try:
-        TEMPLATES_FILE.write_text(
-            json.dumps(_custom_templates, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        _atomic_write(TEMPLATES_FILE, json.dumps(_custom_templates, ensure_ascii=False, indent=2))
     except Exception:
-        pass
+        log.warning("Failed to save templates to %s", TEMPLATES_FILE, exc_info=True)
 
 
 # Read HTML into memory at startup — importlib.resources returns a Traversable, not a real
@@ -175,8 +181,56 @@ PLATFORM_META = {
     "huggingchat": {"name": "HuggingChat", "color": "#ff9d00", "icon": "🤗"},
 }
 
-app = FastAPI(title="Chorus")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+def _atomic_write(path: Path, content: str) -> None:
+    """Write to a temp file then atomically replace the target."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        os.write(fd, content.encode("utf-8"))
+        os.close(fd)
+        os.replace(tmp, str(path))
+    except Exception:
+        os.close(fd) if not os.get_inheritable(fd) else None
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _evict_old_sessions() -> None:
+    """Remove oldest completed sessions when over MAX_SESSIONS."""
+    if len(active_sessions) <= MAX_SESSIONS:
+        return
+    completed = [
+        (sid, s) for sid, s in active_sessions.items()
+        if s.get("status") == "complete"
+    ]
+    completed.sort(key=lambda x: x[1].get("_created", ""))
+    while len(active_sessions) > MAX_SESSIONS and completed:
+        sid, _ = completed.pop(0)
+        del active_sessions[sid]
+        log.info("Evicted old session %s (capped at %d)", sid, MAX_SESSIONS)
+
+
+@asynccontextmanager
+async def lifespan(app):
+    load_history()
+    load_templates()
+    await browser_manager.start()
+    log.info("Chorus running at http://localhost:4747")
+    yield
+    await browser_manager.stop()
+    _onboarding_pages.clear()
+    log.info("Chorus shut down.")
+
+
+app = FastAPI(title="Chorus", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4747", "http://127.0.0.1:4747"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 active_sessions: dict[str, dict] = {}
 prompt_history:  list[dict]      = []
@@ -188,17 +242,15 @@ def load_history():
         try:
             prompt_history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
         except Exception:
+            log.warning("Failed to load history from %s, starting fresh", HISTORY_FILE)
             prompt_history = []
 
 
 def save_history():
     try:
-        HISTORY_FILE.write_text(
-            json.dumps(prompt_history[-MAX_HISTORY:], ensure_ascii=False, indent=2),
-            encoding="utf-8"
-        )
+        _atomic_write(HISTORY_FILE, json.dumps(prompt_history[-MAX_HISTORY:], ensure_ascii=False, indent=2))
     except Exception:
-        pass
+        log.warning("Failed to save history to %s", HISTORY_FILE, exc_info=True)
 
 
 class QueryRequest(BaseModel):
@@ -206,8 +258,24 @@ class QueryRequest(BaseModel):
     platforms: list[str] = list(PLATFORMS.keys())
     profiles:  dict[str, str] = {}
 
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) > MAX_PROMPT_LENGTH:
+            raise ValueError(f"Prompt too long ({len(v)} chars, max {MAX_PROMPT_LENGTH})")
+        return v
+
 class FollowUpRequest(BaseModel):
     prompt: str
+
+    @field_validator("prompt")
+    @classmethod
+    def validate_prompt(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) > MAX_PROMPT_LENGTH:
+            raise ValueError(f"Prompt too long ({len(v)} chars, max {MAX_PROMPT_LENGTH})")
+        return v
 
 class TemplateCreate(BaseModel):
     name:        str
@@ -215,18 +283,6 @@ class TemplateCreate(BaseModel):
     prompt:      str
 
 
-@app.on_event("startup")
-async def startup():
-    load_history()
-    load_templates()
-    await browser_manager.start()
-    print("Chorus running at http://localhost:4747")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    await browser_manager.stop()
-    _onboarding_pages.clear()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -295,6 +351,12 @@ async def create_profile(platform: str, profile_name: str):
         raise HTTPException(500, str(e))
 
 
+@app.get("/api/health")
+def health_check():
+    """Simple health check endpoint."""
+    return {"status": "ok", "platforms": len(PLATFORMS)}
+
+
 @app.post("/api/query")
 async def run_query(req: QueryRequest):
     if not req.prompt.strip():
@@ -310,20 +372,28 @@ async def run_query(req: QueryRequest):
         "platforms": selected,
         "responses": {},
         "status":    "running",
+        "_created":  datetime.now(timezone.utc).isoformat(),
     }
+    _evict_old_sessions()
 
-    asyncio.create_task(run_session(session_id, req.prompt, selected, req.profiles))
+    task = asyncio.create_task(run_session(session_id, req.prompt, selected, req.profiles))
+    task.add_done_callback(_log_task_error)
     return {"session_id": session_id}
 
 
+def _log_task_error(task: asyncio.Task) -> None:
+    """Callback to log exceptions from fire-and-forget tasks."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc:
+        log.error("Background task failed: %s", exc, exc_info=exc)
+
+
 async def run_platform(session_id: str, platform_key: str, prompt: str, profile: str):
+    from chorus.platforms.base import ALL_SELECTORS
     await ws_manager.send_status(session_id, platform_key, "waiting", "Opening browser…")
-    import importlib.resources as _ir, json as _j
-    try:
-        _sel = _j.loads(_ir.files("chorus").joinpath("selectors.json").read_text())
-    except Exception:
-        _sel = {}
-    platform_timeout = _sel.get(platform_key, {}).get("timeout_seconds", 60)
+    platform_timeout = ALL_SELECTORS.get(platform_key, {}).get("timeout_seconds", 60)
     page_text = ""
     try:
         page = await browser_manager.get_page(platform_key, profile)
@@ -437,7 +507,8 @@ async def retry_platform(session_id: str, platform: str):
     retry_count[platform] = retry_count.get(platform, 0) + 1
 
     profile = session.get("profiles", {}).get(platform, "default")
-    asyncio.create_task(_retry_and_cleanup(session_id, platform, session["prompt"], profile))
+    task = asyncio.create_task(_retry_and_cleanup(session_id, platform, session["prompt"], profile))
+    task.add_done_callback(_log_task_error)
     return {"ok": True}
 
 
@@ -446,6 +517,7 @@ async def _retry_and_cleanup(session_id: str, platform: str, prompt: str, profil
         await run_platform(session_id, platform, prompt, profile)
     finally:
         active_sessions.get(session_id, {}).get("_retrying", set()).discard(platform)
+        _retry_locks.pop(f"{session_id}:{platform}", None)
 
 
 @app.post("/api/sessions/{session_id}/followup")
@@ -473,7 +545,8 @@ async def followup_session(session_id: str, req: FollowUpRequest):
         "parent_id": session_id,
         "profiles":  profiles,
     }
-    asyncio.create_task(run_followup(new_id, session_id, req.prompt, platforms))
+    task = asyncio.create_task(run_followup(new_id, session_id, req.prompt, platforms))
+    task.add_done_callback(_log_task_error)
     return {"session_id": new_id, "parent_id": session_id}
 
 
@@ -868,7 +941,8 @@ def main():
             pass
 
     threading.Thread(target=_open_browser, daemon=True).start()
-    uvicorn.run("chorus.main:app", host="127.0.0.1", port=port, log_level="warning")
+    log.info("Starting Chorus on port %d", port)
+    uvicorn.run("chorus.main:app", host="127.0.0.1", port=port, log_level="info")
 
 
 if __name__ == "__main__":
