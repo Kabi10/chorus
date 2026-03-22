@@ -9,16 +9,6 @@ class Perplexity(BaseAI):
     icon         = "🔭"
     platform_key = "perplexity"
 
-    # Response selectors for 2025 Perplexity UI
-    # NOTE: avoid bare .prose p — it matches the question display at the top of results
-    _RESPONSE_SELS = (
-        "div[data-testid='ppl-response'] p, "
-        "[data-testid*='answer-text'] p, "
-        "[class*='markdown'] p, "
-        "[class*='prose']:not([class*='question']):not([class*='nav']):not([class*='tab']) p"
-    )
-
-    # Input selectors covering all known Perplexity UI variants
     _INPUT_SELS = (
         "textarea[placeholder*='Ask'], "
         "textarea[placeholder*='Search'], "
@@ -65,42 +55,47 @@ class Perplexity(BaseAI):
 
         while asyncio.get_running_loop().time() < deadline:
             try:
-                blocks = await self.page.query_selector_all(self._RESPONSE_SELS)
-                if blocks:
-                    texts = [await b.text_content() or "" for b in blocks]
-                    # Strip source/footnote list items (Perplexity appends numbered sources)
-                    raw = "\n".join(t.strip() for t in texts if len(t.strip()) > 40 and not t.strip().startswith(("http", "www")))
-                    current = raw
-                else:
+                # Scope to answer containers — avoid nav/tab labels
+                current = await self._collect_last_in(
+                    '[class*="answer"], [data-testid*="answer"], '
+                    '[class*="Answer"], [class*="result-content"], '
+                    '[class*="prose"]:not(nav *):not(header *)',
+                    'p, li'
+                )
+                # Fallback: try markdown containers specifically
+                if not current:
+                    current = await self._collect_last_in(
+                        '[class*="markdown"]',
+                        'p, li'
+                    )
+                if current and len(current) < 2:
                     current = ""
-                if current and len(current) < 15:
-                    current = ""  # too short — streaming artifact or question label
                 if current != last_text:
                     last_text = current
                     stable_since = asyncio.get_running_loop().time()
                 elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
-                    return current
+                    return self._clean_response(current)
             except Exception:
                 pass
             await asyncio.sleep(0.8)
 
         if not last_text:
-            # Scoped JS fallback: look inside known answer containers and require
-            # substantial paragraphs (> 60 chars) to skip UI chrome labels.
+            # JS fallback scoped to answer containers
             try:
                 last_text = await self.page.evaluate(
                     """(promptSnippet) => {
                         const containers = document.querySelectorAll(
                             '[class*="answer"], [class*="Answer"], [data-testid*="answer"], ' +
-                            'div[data-testid="ppl-response"], [class*="result"], [class*="markdown"], ' +
-                            '[class*="prose"]'
+                            '[class*="result"], [class*="markdown"], [class*="prose"]'
                         );
                         const seen = new Set();
                         const texts = [];
                         containers.forEach(c => {
-                            c.querySelectorAll('p').forEach(p => {
+                            // Skip nav-like containers
+                            if (c.closest('nav, header, footer, [role="navigation"]')) return;
+                            c.querySelectorAll('p, li').forEach(p => {
                                 const t = p.textContent.trim();
-                                if (t.length > 60 && !seen.has(t) &&
+                                if (t.length > 2 && !seen.has(t) &&
                                     !t.startsWith('http') && !t.startsWith('www') &&
                                     !(promptSnippet && t.includes(promptSnippet.substring(0, 30)))) {
                                     seen.add(t);
@@ -116,4 +111,6 @@ class Perplexity(BaseAI):
                 last_text = ""
         if not last_text:
             last_text = await self._js_extract()
+        if not last_text:
+            last_text = await self._body_text_extract()
         return self._clean_response(last_text) or "[No response captured]"

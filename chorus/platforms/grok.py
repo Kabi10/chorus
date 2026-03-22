@@ -80,32 +80,45 @@ class Grok(BaseAI):
 
         while asyncio.get_running_loop().time() < deadline:
             try:
-                # Try known Grok selectors first, then JS-wide extraction
+                # Try known Grok selectors (avoid cellInnerDiv — it matches speed badges)
                 current = await self._collect_last_in(
                     '[data-testid="bot-message"], '
-                    '[data-testid="message"]:not([data-testid*="user"]), '
                     'div[class*="GrokMessage"], div[class*="AssistantMessage"], '
-                    'div[class*="message"]:not([class*="user"]):not([class*="human"]), '
-                    'div[class*="response"], div[class*="assistant"]',
-                    'p, span, div[class*="prose"]'
+                    'div[class*="message-bubble"], div[class*="response"], '
+                    'div[class*="assistant"], article',
+                    'p, div[class*="prose"], div[class*="markdown"], span[class*="text"]'
                 )
-                # Grok may not use <p> — try broad JS extraction if no structured match
-                if not current or len(current) < 80:
+                # JS fallback — scan whole page, skip speed-badge elements
+                if not current or len(current) < 3:
                     current = await self.page.evaluate(
                         """(promptSnippet) => {
-                            const els = Array.from(document.querySelectorAll(
-                                '[data-testid="bot-message"] *, [class*="grok"] *, [class*="response"] *, ' +
-                                '[data-testid*="message"]:not([data-testid*="user"]) *'
-                            ));
-                            const texts = els
-                                .map(el => el.textContent.trim())
-                                .filter(t => t.length > 30 && !t.includes(promptSnippet.substring(0, 20)));
-                            return [...new Set(texts)].join('\\n');
+                            // Skip speed badges, mode selectors, button labels
+                            const skip = /^(\\d+(\\.\\d+)?(ms|s)\\s*(Fast|Normal|Slow)?|Auto|Fast|Normal|Slow|Speed|Quality|Default|Balanced|Creative|Precise|Search|Think|Extended|Reasoning|Think Harder|DeepSearch|Deep Search|Fun|Grok \\d|Grok|Send|Cancel|Copy|Share|Like|Dislike|Regenerate|Edit|Delete|New chat|Menu|Settings|Sign in|Log in|Upgrade|Subscribe|More)$/i;
+                            const seen = new Set();
+                            const texts = [];
+                            document.querySelectorAll('p, div, span').forEach(el => {
+                                // Skip elements inside buttons, navs, headers, footers
+                                if (el.closest('button, nav, header, footer, [role="navigation"], [role="banner"]')) return;
+                                // Skip elements that only contain children (not leaf-ish)
+                                if (el.children.length > 3) return;
+                                const t = el.textContent.trim();
+                                if (!t || seen.has(t)) return;
+                                if (skip.test(t)) return;
+                                if (t.includes(promptSnippet.substring(0, 20))) return;
+                                seen.add(t);
+                                texts.push(t);
+                            });
+                            // Prefer the longest substantial text found
+                            const filtered = texts.filter(t => t.length >= 2);
+                            if (!filtered.length) return '';
+                            // Sort by length descending, return the longest
+                            filtered.sort((a, b) => b.length - a.length);
+                            return filtered[0];
                         }""",
                         self._last_prompt[:60]
                     ) or ""
-                if current and len(current) < 80:
-                    current = ""  # still too short
+                if current and len(current) < 3:
+                    current = ""  # truly empty only
                 if current != last_text:
                     last_text = current
                     stable_since = asyncio.get_running_loop().time()
@@ -117,4 +130,6 @@ class Grok(BaseAI):
 
         if not last_text:
             last_text = await self._js_extract()
+        if not last_text:
+            last_text = await self._body_text_extract()
         return self._clean_response(last_text) or "[No response captured]"

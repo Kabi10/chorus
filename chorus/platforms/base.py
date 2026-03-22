@@ -189,6 +189,25 @@ class BaseAI(ABC):
         # Strip Grok web-search preamble: "Searching the webN results"
         text = re.sub(r"^Searching the web\s*\d*\s*results?\s*", "", text, flags=re.IGNORECASE)
 
+        # Strip Gemini "Show thinking" toggle text leaking into response
+        text = re.sub(r"^Show thinking\s*Gemini said\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"^Show thinking\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"^Gemini said\s*", "", text, flags=re.IGNORECASE)
+
+        # Strip Grok speed badges inline: "1.5sFast", "896msNormal"
+        text = re.sub(r"\d+(\.\d+)?(ms|s)\s*(Fast|Normal|Slow)", "", text, flags=re.IGNORECASE)
+        # Strip Grok suggested follow-up questions appended to response
+        # These appear concatenated without spaces: "fourExplain basic arithmeticMultiplication tables"
+        text = re.sub(r"(Explain|What is|Why\s|How\s|Tell me|Describe|Calculate|Multiplication|Compare).+$", "", text, flags=re.IGNORECASE)
+
+        # Strip "Copilot said" / "Gemini said" etc. prefixes
+        text = re.sub(r"^(Copilot|Gemini|Grok|ChatGPT|Claude|Meta AI)\s+said\s*", "", text, flags=re.IGNORECASE)
+
+        # Strip HuggingChat model-provider badge: "agentic with Model via provider"
+        text = re.sub(r"\nagentic with .+", "", text, flags=re.IGNORECASE)
+        # Strip copy-button label artifacts
+        text = re.sub(r"\nCopied\b.*", "", text, flags=re.IGNORECASE)
+
         # Strip prompt text if it leaked to the start of the response
         if self._last_prompt:
             snippet = self._last_prompt[:50]
@@ -239,6 +258,55 @@ class BaseAI(ABC):
         # Collapse runs of 3+ blank lines
         text = re.sub(r"\n{3,}", "\n\n", "\n".join(out))
         return text.strip()
+
+    async def _body_text_extract(self) -> str:
+        """
+        Nuclear fallback: get full page text via Playwright's inner_text
+        (which pierces Shadow DOM), find text after the user's prompt,
+        and return the first substantial non-UI block.
+        Works when CSS selectors are completely unknown.
+        """
+        UI_JUNK = {
+            'send', 'cancel', 'copy', 'share', 'like', 'dislike', 'regenerate',
+            'edit', 'delete', 'new chat', 'menu', 'settings', 'sign in', 'log in',
+            'upgrade', 'subscribe', 'think harder', 'deepsearch', 'deep search',
+            'auto', 'fast', 'normal', 'slow', 'more', 'fun', 'search', 'think',
+            'stop generating', 'try again', 'retry', 'feedback', 'report',
+            'copilot said', 'gemini said', 'grok said', 'chatgpt said',
+            'claude said', 'meta ai said', 'answer', 'links', 'images',
+        }
+        try:
+            # inner_text pierces Shadow DOM unlike evaluate+textContent
+            body = ""
+            for sel in ['main', '[role="main"]', 'article', 'body']:
+                try:
+                    body = await self.page.inner_text(sel)
+                    if body and len(body) > 50:
+                        break
+                except Exception:
+                    continue
+            if not body:
+                return ""
+
+            # Find content after the prompt
+            prompt_snippet = self._last_prompt[:40] if self._last_prompt else ""
+            if prompt_snippet:
+                idx = body.find(prompt_snippet)
+                if idx >= 0:
+                    body = body[idx + len(self._last_prompt):]
+
+            # Split into lines and filter junk
+            lines = [l.strip() for l in body.split('\n') if l.strip()]
+            filtered = [
+                l for l in lines
+                if l.lower() not in UI_JUNK and len(l) >= 2
+            ]
+            if filtered:
+                # Return the first substantial line (the actual response)
+                return filtered[0]
+            return ""
+        except Exception:
+            return ""
 
     async def _js_extract(self) -> str:
         """

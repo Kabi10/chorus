@@ -1,46 +1,19 @@
 """
 Playwright browser session manager.
-
-Priority order:
-  1. CDP (remote debugging) — attaches to your already-running Chrome on port 9222.
-     Launch Chrome with: chrome.exe --remote-debugging-port=9222
-     Sessions are your real Chrome sessions — zero re-login needed.
-
-  2. Persistent profile at ~/.chorus/profile/ — a dedicated Chrome window with
-     saved sessions.  Log in once; sessions persist across Chorus restarts.
-
-If the browser context dies mid-session (user closes Chrome, CDP drops, etc.),
-get_page() automatically reconnects before returning the page.
+All platforms share one persistent Chrome profile at ~/.chorus/profile/
+so sessions stay fresh while the browser is running — no per-platform login needed.
 """
-import asyncio
-import os
-import aiohttp
 from pathlib import Path
 from playwright.async_api import async_playwright, BrowserContext, Page
 
 PROFILE_DIR = Path.home() / ".chorus" / "profile"
-CDP_URL = "http://localhost:9222"
-HEADLESS = os.environ.get("CHORUS_HEADLESS", "0") == "1"
-
-
-async def _cdp_available() -> bool:
-    """Return True if Chrome remote debugging is reachable on port 9222."""
-    try:
-        async with aiohttp.ClientSession() as s:
-            async with s.get(f"{CDP_URL}/json/version", timeout=aiohttp.ClientTimeout(total=1.5)) as r:
-                return r.status == 200
-    except Exception:
-        return False
 
 
 class BrowserManager:
     def __init__(self):
         self._playwright = None
         self._ctx: BrowserContext | None = None
-        self._browser = None        # only set when using CDP
         self._pages: dict[str, Page] = {}
-        self._using_cdp = False
-        self._start_lock = asyncio.Lock()
 
     @property
     def playwright(self):
@@ -48,29 +21,24 @@ class BrowserManager:
 
     async def start(self):
         self._playwright = await async_playwright().start()
-        await self._connect()
-
-    async def _connect(self):
-        """Establish browser context. Called on startup and on reconnect."""
-        # ── 1. Try CDP (existing Chrome with --remote-debugging-port=9222) ──
-        if await _cdp_available():
-            try:
-                self._browser = await self._playwright.chromium.connect_over_cdp(CDP_URL)
-                contexts = self._browser.contexts
-                self._ctx = contexts[0] if contexts else await self._browser.new_context()
-                self._using_cdp = True
-                print("[Chorus] Connected to existing Chrome via CDP — using your real sessions.")
-                return
-            except Exception as e:
-                print(f"[Chorus] CDP available but connect failed ({e}), falling back to profile.")
-
-        # ── 2. Persistent shared profile ──────────────────────────────────
-        self._using_cdp = False
-        self._browser = None
         PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Remove stale lock files that prevent Chrome from launching after an
-        # unclean shutdown (Chrome exits with code 21 when profile is locked).
+        # Kill any orphaned Chrome process still holding the profile lock,
+        # then remove stale lock files. This makes restarts always clean.
+        import subprocess, sys
+        profile_str = str(PROFILE_DIR)
+        if sys.platform == "win32":
+            try:
+                subprocess.run(
+                    ["powershell", "-Command",
+                     f"Get-WmiObject Win32_Process -Filter 'name=\"chrome.exe\"' "
+                     f"| Where-Object {{ $_.CommandLine -like '*{profile_str}*' "
+                     f"  -and $_.CommandLine -notlike '*type=*' }} "
+                     f"| ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"],
+                    capture_output=True, timeout=5
+                )
+            except Exception:
+                pass
         for lock_path in [
             PROFILE_DIR / "lockfile",
             PROFILE_DIR / "SingletonLock",
@@ -79,90 +47,50 @@ class BrowserManager:
             try:
                 lock_path.unlink(missing_ok=True)
             except OSError:
-                pass  # file is held by a live process — leave it alone
+                pass
 
-        base_args = [
-            "--disable-blink-features=AutomationControlled",
-            "--disable-infobars",
-            "--no-sandbox",
-        ]
-        if HEADLESS:
-            # Bundled Playwright Chromium handles headless + persistent profile
-            # more reliably than system Chrome. Add extra stability flags.
-            base_args += [
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-setuid-sandbox",
-            ]
+        launch_args = dict(
+            user_data_dir=str(PROFILE_DIR),
+            headless=False,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--window-position=0,0",
+                "--window-size=1280,800",
+            ],
+            viewport={"width": 1280, "height": 800},
+        )
+        try:
+            # Prefer system Chrome — sessions persist and refresh like a real browser
             self._ctx = await self._playwright.chromium.launch_persistent_context(
-                str(PROFILE_DIR),
-                headless=True,
-                args=base_args,
-                viewport={"width": 1280, "height": 800},
+                channel="chrome", **launch_args
             )
-            print("[Chorus] Running in headless mode (no browser window).")
-        else:
-            launch_args = dict(
-                user_data_dir=str(PROFILE_DIR),
-                headless=False,
-                args=base_args,
-                viewport={"width": 1280, "height": 800},
+        except Exception:
+            # Fall back to bundled Chromium if Chrome isn't installed
+            self._ctx = await self._playwright.chromium.launch_persistent_context(
+                **launch_args
             )
-            try:
-                self._ctx = await self._playwright.chromium.launch_persistent_context(
-                    channel="chrome", **launch_args
-                )
-            except Exception:
-                self._ctx = await self._playwright.chromium.launch_persistent_context(
-                    **launch_args
-                )
 
-    async def _ensure_context(self):
-        """If the browser context has been closed, reconnect transparently."""
-        needs_reconnect = False
-        if self._ctx is None:
-            needs_reconnect = True
-        else:
-            try:
-                # Accessing .pages raises if the context is closed
-                _ = self._ctx.pages
-            except Exception:
-                needs_reconnect = True
-
-        if needs_reconnect:
-            async with self._start_lock:
-                # Double-check after acquiring lock
-                try:
-                    if self._ctx is not None:
-                        _ = self._ctx.pages
-                        return  # another coroutine already reconnected
-                except Exception:
-                    pass
-                print("[Chorus] Browser context lost — reconnecting…")
-                self._pages.clear()
-                self._ctx = None
-                try:
-                    await self._connect()
-                    print("[Chorus] Reconnected.")
-                except Exception as e:
-                    raise RuntimeError(f"Could not reconnect to browser: {e}")
+        # Stealth: override navigator.webdriver and other automation signals
+        # so sites like claude.ai don't detect Playwright
+        await self._ctx.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => false});
+            // Hide Playwright/Chromium automation indicators
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
+            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
+        """)
 
     async def stop(self):
-        if self._using_cdp:
-            if self._browser:
-                await self._browser.close()  # disconnects from CDP without closing Chrome
-        else:
-            if self._ctx:
-                await self._ctx.close()
+        if self._ctx:
+            await self._ctx.close()
         if self._playwright:
             await self._playwright.stop()
 
     async def get_context(self, platform: str = "default", profile: str = "default") -> BrowserContext:
-        await self._ensure_context()
+        """All platforms share one context (one Chrome profile)."""
         return self._ctx
 
     async def get_page(self, platform: str, profile: str = "default") -> Page:
-        await self._ensure_context()
         key = f"{platform}:{profile}"
         page = self._pages.get(key)
         if page is None or page.is_closed():

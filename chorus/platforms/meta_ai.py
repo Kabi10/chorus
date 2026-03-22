@@ -67,7 +67,7 @@ class MetaAI(BaseAI):
                     '[class*="bot-message"]',
                     'p, span, div[class*="prose"] p'
                 )
-                if current and len(current) < 20:
+                if current and len(current) < 2:
                     current = ""
                 if current != last_text:
                     last_text = current
@@ -80,4 +80,6 @@ class MetaAI(BaseAI):
 
         if not last_text:
             last_text = await self._js_extract()
+        if not last_text:
+            last_text = await self._body_text_extract()
         return self._clean_response(last_text) or "[No response captured]"

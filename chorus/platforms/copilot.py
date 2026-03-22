@@ -30,16 +30,14 @@ class Copilot(BaseAI):
                 'textarea'
             )
             el = await self.page.wait_for_selector(input_sel, timeout=15000)
-            # Use JS click to avoid "Element is not attached to DOM" on React re-renders
             try:
                 await el.click()
             except Exception:
                 await self._js_click(el)
-            await asyncio.sleep(0.5)  # wait for re-render to settle
+            await asyncio.sleep(0.5)
             try:
                 tag = await el.evaluate("el => el.tagName.toLowerCase()")
             except Exception:
-                # Element detached after React re-render — re-query
                 el = await self.page.wait_for_selector(input_sel, timeout=8000)
                 tag = await el.evaluate("el => el.tagName.toLowerCase()")
             if tag == "textarea":
@@ -64,12 +62,79 @@ class Copilot(BaseAI):
         except Exception as e:
             raise RuntimeError(f"Copilot: could not submit — {e}")
 
+    async def wait_for_response(self, timeout: int = 90) -> str:
+        await asyncio.sleep(3)
+        deadline = asyncio.get_running_loop().time() + timeout
+        last_text = ""
+        stable_since = asyncio.get_running_loop().time()
+        stable_needed = 3.5
+
+        while asyncio.get_running_loop().time() < deadline:
+            try:
+                # Check if Copilot is still streaming
+                stop_btn = await self.page.query_selector(
+                    'button#stop-responding-button, button[aria-label*="Stop"]'
+                )
+
+                current = ""
+
+                # ── Method 1: Shadow DOM (cib-* web components) ──
+                # Playwright's query_selector auto-pierces shadow roots,
+                # unlike document.querySelectorAll in page.evaluate.
+                containers = await self.page.query_selector_all(
+                    'cib-message-group[source="bot"]'
+                )
+                if containers:
+                    last = containers[-1]
+                    text_blocks = await last.query_selector_all('.ac-textBlock')
+                    if text_blocks:
+                        texts = [await b.text_content() or "" for b in text_blocks]
+                        current = "\n".join(t.strip() for t in texts if t.strip())
+                    if not current:
+                        current = (await last.text_content() or "").strip()
+
+                # ── Method 2: Non-shadow containers (2025 redesign) ──
+                if not current:
+                    current = await self._collect_last_in(
+                        '[data-testid="message-container"], '
+                        '[data-testid*="bot-message"], [class*="BotMessage"], '
+                        '[class*="response-message"], [class*="copilot-response"], '
+                        '[class*="assistant"]',
+                        'p, .ac-textBlock, div[class*="content"], div[class*="markdown"]'
+                    )
+
+                # ── Method 3: Broad Playwright query ──
+                if not current:
+                    for sel in ['.ac-textBlock', '[class*="response"] p',
+                                '[class*="bot-message"] p', '.prose p']:
+                        blocks = await self.page.query_selector_all(sel)
+                        if blocks:
+                            texts = [await b.text_content() or "" for b in blocks]
+                            joined = "\n".join(t.strip() for t in texts if t.strip())
+                            if joined and len(joined) > 2:
+                                current = joined
+                                break
+
+                # ── Method 4: JS fallback ──
+                if not current:
+                    current = await self._js_extract()
+
+                if current != last_text:
+                    last_text = current
+                    stable_since = asyncio.get_running_loop().time()
+                elif current and not stop_btn and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
+                    return self._clean_response(current)
+            except Exception:
+                pass
+            await asyncio.sleep(0.8)
+
+        if not last_text:
+            last_text = await self._js_extract()
+        if not last_text:
+            last_text = await self._body_text_extract()
+        return self._clean_response(last_text) or "[No response captured]"
+
     async def _js_extract(self) -> str:
-        """
-        JavaScript fallback: collect all paragraph-like text on the page,
-        strip out the user's own prompt, and return what remains.
-        Works regardless of which CSS class names Copilot uses.
-        """
         try:
             prompt_snippet = self._last_prompt[:60]
             result = await self.page.evaluate(
@@ -87,78 +152,3 @@ class Copilot(BaseAI):
             return (result or "").strip()
         except Exception:
             return ""
-
-    async def wait_for_response(self, timeout: int = 90) -> str:
-        await asyncio.sleep(3)
-        deadline = asyncio.get_running_loop().time() + timeout
-        last_text = ""
-        stable_since = asyncio.get_running_loop().time()
-        stable_needed = 3.5
-
-        # All known Copilot response selectors (old cib-* + new React structure)
-        response_sels = (
-            'cib-chat-turn[source="bot"] p, '
-            'cib-message-group[source="bot"] cib-message p, '
-            '[data-testid="message-text"] p, '
-            '[data-testid*="bot-message"] p, '
-            '[class*="BotMessage"] p, '
-            '[class*="bot-message"] p, '
-            '[class*="response"] p, '
-            '.ac-textBlock p, '
-            '.prose p, '
-            '[role="presentation"] p'
-        )
-
-        while asyncio.get_running_loop().time() < deadline:
-            try:
-                # Broad JS-based extraction — look for AI response containers after user's prompt
-                js_broad = await self.page.evaluate("""(promptSnippet) => {
-                    // Try specific AI-response selectors first
-                    const aiSels = [
-                        '[data-testid*="ai-response"]', '[data-testid*="assistant"]',
-                        '[class*="ai-response"]', '[class*="assistant-message"]',
-                        '[class*="bot-response"]', '[class*="copilot-message"]',
-                    ];
-                    for (const sel of aiSels) {
-                        const els = document.querySelectorAll(sel);
-                        if (!els.length) continue;
-                        const last = els[els.length - 1];
-                        const text = last.textContent.trim();
-                        if (text.length > 20 && !text.includes(promptSnippet.substring(0, 20))) return text;
-                    }
-                    // Collect all p/li > 40 chars not containing the prompt
-                    const seen = new Set();
-                    const kept = Array.from(document.querySelectorAll('p, li'))
-                        .map(el => el.textContent.trim())
-                        .filter(t => t.length > 40 && !t.includes(promptSnippet.substring(0, 20)) && !seen.has(t) && seen.add(t));
-                    return kept.length > 0 ? kept.join('\\n') : '';
-                }""", self._last_prompt[:60])
-                js_broad = (js_broad or "").strip()
-
-                # Try scoping to the last bot message container first
-                current = await self._collect_last_in(
-                    'cib-chat-turn[source="bot"], [data-testid*="bot-message"], [class*="BotMessage"]',
-                    'p, .ac-textBlock'
-                )
-                if not current:
-                    current = js_broad
-                if not current:
-                    blocks = await self.page.query_selector_all(response_sels)
-                    if blocks:
-                        texts = [await b.text_content() or "" for b in blocks]
-                        current = "\n".join(t.strip() for t in texts if t.strip())
-                    else:
-                        current = await self._js_extract()
-
-                if current != last_text:
-                    last_text = current
-                    stable_since = asyncio.get_running_loop().time()
-                elif current and (asyncio.get_running_loop().time() - stable_since) > stable_needed:
-                    return self._clean_response(current)
-            except Exception:
-                pass
-            await asyncio.sleep(0.8)
-
-        if not last_text:
-            last_text = await self._js_extract()
-        return self._clean_response(last_text) or "[No response captured]"

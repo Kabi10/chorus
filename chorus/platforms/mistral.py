@@ -56,8 +56,8 @@ class Mistral(BaseAI):
                     '[class*="assistant-message"]',
                     'p, [class*="markdown"] p, .prose p'
                 )
-                if current and len(current) < 80:
-                    current = ""  # too short to be a real response
+                if current and len(current) < 2:
+                    current = ""
                 if current != last_text:
                     last_text = current
                     stable_since = asyncio.get_running_loop().time()

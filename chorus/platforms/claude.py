@@ -10,25 +10,76 @@ class Claude(BaseAI):
     platform_key = "claude"
 
     async def submit_prompt(self, prompt: str) -> None:
-        await self.page.goto(self.url, wait_until="domcontentloaded", timeout=30000)
+        # Navigate — catch "interrupted" errors (page auto-redirects to same URL)
+        try:
+            await self.page.goto(self.url, wait_until="load", timeout=30000)
+        except Exception as nav_err:
+            if "interrupted" not in str(nav_err).lower():
+                raise
+        # Ensure we're on claude.ai regardless of navigation result
         await asyncio.sleep(3)
+        # Strip ?incognito if Claude detected automation and redirected
+        if "incognito" in self.page.url:
+            await self.page.evaluate("Object.defineProperty(navigator, 'webdriver', {get: () => false})")
+            try:
+                await self.page.goto(self.url, wait_until="load", timeout=30000)
+            except Exception:
+                pass
+            await asyncio.sleep(3)
+        if "claude.ai" not in self.page.url:
+            await self.page.goto(self.url, wait_until="load", timeout=30000)
+            await asyncio.sleep(3)
+
+        # Dismiss cookie consent banner using Playwright locators (more reliable than evaluate)
+        try:
+            for sel in [
+                'button:has-text("Accept all")',
+                'button:has-text("Accept All")',
+                'button:has-text("Accept & continue")',
+                'button:has-text("Accept")',
+                'button:has-text("OK")',
+                'button:has-text("Got it")',
+                'button:has-text("Agree")',
+                '[data-testid="cookie-accept"]',
+                'dialog button:last-child',
+            ]:
+                try:
+                    btn = self.page.locator(sel).first
+                    if await btn.is_visible(timeout=1000):
+                        await btn.click()
+                        await asyncio.sleep(1)
+                        break
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # Claude.ai adds ?incognito when not logged in — input works but
+        # submissions are silently ignored. Treat as auth failure.
+        if "incognito" in self.page.url:
+            raise RuntimeError(
+                f"{self.name}: not logged in (incognito mode). Open Chorus, click ⚙ on Claude, "
+                f"add an account, and log in once. Current URL: {self.page.url}"
+            )
         await self.assert_authenticated()
 
         try:
             el = await self.page.wait_for_selector(self._input_sel(), timeout=20000)
             await el.click()
-            await self.page.keyboard.type(prompt, delay=15)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
+            await self.page.keyboard.type(prompt, delay=20)
+            await asyncio.sleep(0.8)
 
+            # Try Enter first (ProseMirror submits on Enter), then send button
+            await self.page.keyboard.press("Enter")
+            await asyncio.sleep(1)
             send_sel = self._send_sel()
             if send_sel:
                 try:
                     btn = await self.page.wait_for_selector(send_sel, timeout=3000)
                     await btn.click()
-                    return
                 except Exception:
                     pass
-            await self.page.keyboard.press("Enter")
         except Exception as e:
             raise RuntimeError(f"Claude: could not submit — {e}")
 
@@ -121,4 +172,6 @@ class Claude(BaseAI):
                 }
                 return '';
             }""", self._last_prompt[:60]) or ""
+        if not last_text:
+            last_text = await self._body_text_extract()
         return self._clean_response(last_text) or "[No response captured]"
