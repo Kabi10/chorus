@@ -28,16 +28,20 @@ def client(tmp_path):
     m._ONBOARDING_FILE = tmp_path / "onboarding.json"
     with patch.object(m.browser_manager, "start", new_callable=AsyncMock), \
          patch.object(m.browser_manager, "stop", new_callable=AsyncMock):
-        yield TestClient(m.app)
+        # base_url matters: TrustedHostMiddleware rejects non-local Host headers
+        yield TestClient(m.app, base_url="http://localhost")
 
 
 # ── /api/platforms ────────────────────────────────────────────────────────────
 
-def test_list_platforms_returns_all_eight(client):
+def test_list_platforms_returns_all_registered(client):
     r = client.get("/api/platforms")
     assert r.status_code == 200
     data = r.json()
-    expected = {"gemini", "chatgpt", "claude", "perplexity", "grok", "copilot", "deepseek", "mistral"}
+    expected = {
+        "gemini", "chatgpt", "claude", "perplexity", "grok",
+        "copilot", "deepseek", "mistral", "meta_ai", "huggingchat",
+    }
     assert set(data.keys()) == expected
 
 
@@ -80,6 +84,81 @@ def test_query_creates_session_in_active_sessions(client):
     sid = r.json()["session_id"]
     assert sid in m.active_sessions
     assert m.active_sessions[sid]["prompt"] == "test prompt"
+
+
+def test_query_stores_profiles_in_session(client):
+    """Regression: profiles were dropped, so retry/follow-up fell back to 'default'."""
+    import chorus.main as m
+    with patch("chorus.main.asyncio.create_task"):
+        r = client.post("/api/query", json={
+            "prompt": "hello", "platforms": ["gemini"],
+            "profiles": {"gemini": "work"},
+        })
+    sid = r.json()["session_id"]
+    assert m.active_sessions[sid]["profiles"] == {"gemini": "work"}
+
+
+def test_retry_uses_session_profile(client):
+    """Regression: retry must reuse the profile the original query ran with."""
+    import chorus.main as m
+    m.active_sessions["rp1"] = {
+        "prompt": "hello", "platforms": ["gemini"],
+        "profiles": {"gemini": "work"},
+        "responses": {"gemini": {"error": True, "error_code": "timeout", "message": "timed out"}},
+        "status": "complete",
+    }
+    with patch("chorus.main.asyncio.create_task"), \
+         patch("chorus.main._retry_and_cleanup") as rc:
+        r = client.post("/api/sessions/rp1/retry/gemini")
+    assert r.status_code == 200
+    rc.assert_called_once_with("rp1", "gemini", "hello", "work")
+
+
+# ── Local-only security guards ────────────────────────────────────────────────
+
+def test_untrusted_host_header_is_rejected(client):
+    """DNS-rebinding guard: a non-local Host header must be refused."""
+    r = client.get("/api/health", headers={"host": "evil.example.com"})
+    assert r.status_code == 400
+
+
+def test_local_host_header_is_accepted(client):
+    r = client.get("/api/health")
+    assert r.status_code == 200
+
+
+# TestClient.websocket_connect ignores base_url and sends Host: testserver,
+# so a local Host header must be given explicitly to pass TrustedHost.
+_WS_LOCAL_HOST = {"host": "localhost"}
+
+
+def test_websocket_rejects_cross_origin(client):
+    """WS is not covered by CORS — foreign origins must be refused."""
+    from starlette.testclient import WebSocketDenialResponse
+    from starlette.websockets import WebSocketDisconnect
+    with pytest.raises((WebSocketDenialResponse, WebSocketDisconnect)) as exc:
+        with client.websocket_connect(
+            "/ws", headers={**_WS_LOCAL_HOST, "origin": "https://evil.example.com"}
+        ):
+            pass
+    # Must NOT have completed a normal accept — either the handshake was
+    # denied outright or closed with policy-violation code 1008.
+    if isinstance(exc.value, WebSocketDisconnect):
+        assert exc.value.code == 1008
+
+
+def test_websocket_accepts_local_origin(client):
+    import chorus.main as m
+    with client.websocket_connect(
+        "/ws", headers={**_WS_LOCAL_HOST, "origin": f"http://localhost:{m.PORT}"}
+    ):
+        pass  # connection accepted
+
+
+def test_websocket_accepts_no_origin(client):
+    """Non-browser clients (no Origin header) are allowed."""
+    with client.websocket_connect("/ws", headers=_WS_LOCAL_HOST):
+        pass  # connection accepted
 
 
 # ── /api/sessions/{id} ────────────────────────────────────────────────────────

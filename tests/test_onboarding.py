@@ -87,7 +87,8 @@ def onboarding_client(tmp_path):
     import chorus.main as m
     # Redirect onboarding state file to tmp_path for isolation
     m._ONBOARDING_FILE = tmp_path / "onboarding.json"
-    return TestClient(m.app)
+    # base_url matters: TrustedHostMiddleware rejects non-local Host headers
+    return TestClient(m.app, base_url="http://localhost")
 
 
 def test_onboarding_state_endpoint_returns_all_platforms(onboarding_client):
