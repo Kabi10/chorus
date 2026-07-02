@@ -7,7 +7,10 @@ def _load_selectors():
     return json.loads(text)
 
 
-ALL_PLATFORMS = ["gemini","chatgpt","claude","perplexity","grok","copilot","deepseek","mistral"]
+ALL_PLATFORMS = [
+    "gemini", "chatgpt", "claude", "perplexity", "grok",
+    "copilot", "deepseek", "mistral", "meta_ai", "huggingchat",
+]
 
 
 def test_all_platforms_have_timeout_seconds():
@@ -34,7 +37,8 @@ import asyncio
 def _make_client():
     import chorus.main as m
     from fastapi.testclient import TestClient
-    return TestClient(m.app)
+    # base_url matters: TrustedHostMiddleware rejects non-local Host headers
+    return TestClient(m.app, base_url="http://localhost")
 
 
 def test_classify_error_timeout():

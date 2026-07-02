@@ -171,7 +171,8 @@ async def test_js_extract_returns_page_evaluate_result():
 async def test_js_extract_passes_prompt_snippet_to_js():
     ai, mock_page = _make_platform()
     mock_page.evaluate = AsyncMock(return_value="response")
-    await ai._js_extract(prompt_snippet="What is")
+    ai._last_prompt = "What is the answer to life, the universe and everything?"
+    await ai._js_extract()
     call_args = mock_page.evaluate.call_args
     assert "What is" in call_args[0][1]  # second positional arg is the prompt snippet
 

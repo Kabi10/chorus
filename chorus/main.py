@@ -14,6 +14,7 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, field_validator
 import uvicorn
 from playwright.sync_api import sync_playwright
@@ -87,6 +88,7 @@ TEMPLATES_FILE = _CHORUS_DIR / "templates.json"
 MAX_HISTORY  = 100
 MAX_SESSIONS = 50
 MAX_PROMPT_LENGTH = 15_000
+PORT = 4747
 
 _BUILTIN_TEMPLATES = [
     {
@@ -185,11 +187,10 @@ def _atomic_write(path: Path, content: str) -> None:
     """Write to a temp file then atomically replace the target."""
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
-        os.write(fd, content.encode("utf-8"))
-        os.close(fd)
+        with os.fdopen(fd, "wb") as f:
+            f.write(content.encode("utf-8"))
         os.replace(tmp, str(path))
     except Exception:
-        os.close(fd) if not os.get_inheritable(fd) else None
         try:
             os.unlink(tmp)
         except OSError:
@@ -227,10 +228,14 @@ async def lifespan(app):
 app = FastAPI(title="Chorus", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4747", "http://127.0.0.1:4747"],
+    allow_origins=[f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Reject requests whose Host header isn't local — a remote website could
+# otherwise reach this API (and the user's logged-in AI sessions) by
+# DNS-rebinding a domain it controls to 127.0.0.1.
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1"])
 
 active_sessions: dict[str, dict] = {}
 prompt_history:  list[dict]      = []
@@ -370,6 +375,7 @@ async def run_query(req: QueryRequest):
     active_sessions[session_id] = {
         "prompt":    req.prompt,
         "platforms": selected,
+        "profiles":  req.profiles,
         "responses": {},
         "status":    "running",
         "_created":  datetime.now(timezone.utc).isoformat(),
@@ -477,21 +483,12 @@ def get_session(session_id: str):
     return active_sessions[session_id]
 
 
-_retry_locks: dict = {}  # key = "{session_id}:{platform}"
-
-
 @app.post("/api/sessions/{session_id}/retry/{platform}")
 async def retry_platform(session_id: str, platform: str):
     if session_id not in active_sessions:
         raise HTTPException(status_code=404, detail="Session not found")
     if platform not in PLATFORMS:
         raise HTTPException(status_code=400, detail=f"Unknown platform: {platform}")
-
-    lock_key = f"{session_id}:{platform}"
-    lock = _retry_locks.setdefault(lock_key, asyncio.Lock())
-
-    if lock.locked():
-        raise HTTPException(status_code=409, detail="Retry already in progress for this platform")
 
     session = active_sessions[session_id]
     retrying: set = session.setdefault("_retrying", set())
@@ -501,7 +498,7 @@ async def retry_platform(session_id: str, platform: str):
 
     retry_count = session.setdefault("_retry_counts", {})
     if retry_count.get(platform, 0) >= 3:
-        raise HTTPException(status_code=422, detail=_json.dumps({"error": "Max retries reached", "code": "max_retries"}))
+        raise HTTPException(status_code=422, detail=json.dumps({"error": "Max retries reached", "code": "max_retries"}))
 
     retrying.add(platform)
     retry_count[platform] = retry_count.get(platform, 0) + 1
@@ -517,7 +514,6 @@ async def _retry_and_cleanup(session_id: str, platform: str, prompt: str, profil
         await run_platform(session_id, platform, prompt, profile)
     finally:
         active_sessions.get(session_id, {}).get("_retrying", set()).discard(platform)
-        _retry_locks.pop(f"{session_id}:{platform}", None)
 
 
 @app.post("/api/sessions/{session_id}/followup")
@@ -545,15 +541,15 @@ async def followup_session(session_id: str, req: FollowUpRequest):
         "parent_id": session_id,
         "profiles":  profiles,
     }
-    task = asyncio.create_task(run_followup(new_id, session_id, req.prompt, platforms))
+    task = asyncio.create_task(run_followup(new_id, session_id, req.prompt, platforms, profiles))
     task.add_done_callback(_log_task_error)
     return {"session_id": new_id, "parent_id": session_id}
 
 
-async def run_followup(session_id: str, parent_id: str, prompt: str, platforms: list[str]):
+async def run_followup(session_id: str, parent_id: str, prompt: str, platforms: list[str], profiles: dict):
     """Send follow-up on existing browser pages without navigating away."""
     tasks = [
-        run_followup_platform(session_id, p, prompt)
+        run_followup_platform(session_id, p, prompt, profiles.get(p, "default"))
         for p in platforms
     ]
     await asyncio.gather(*tasks, return_exceptions=True)
@@ -581,12 +577,12 @@ async def run_followup(session_id: str, parent_id: str, prompt: str, platforms: 
     })
 
 
-async def run_followup_platform(session_id: str, platform_key: str, prompt: str):
+async def run_followup_platform(session_id: str, platform_key: str, prompt: str, profile: str = "default"):
     """Submit follow-up to an existing page without reloading."""
     await ws_manager.send_status(session_id, platform_key, "typing", "Submitting follow-up…")
     try:
         # Get the existing page (already on the chat)
-        page = await browser_manager.get_page(platform_key, "default")
+        page = await browser_manager.get_page(platform_key, profile)
         PlatformClass = PLATFORMS[platform_key]
         ai = PlatformClass(page)
         ai._last_prompt = prompt  # needed for _clean_response prompt-stripping
@@ -902,8 +898,19 @@ def onboarding_skip(platform: str):
     return {"ok": True}
 
 
+_ALLOWED_WS_ORIGINS = {f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}"}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
+    # Browsers do NOT apply CORS to WebSockets — without this check any
+    # website the user visits could connect and read every prompt and
+    # response broadcast. No Origin header means a non-browser client
+    # (curl, scripts), which is fine for a localhost-only tool.
+    origin = ws.headers.get("origin")
+    if origin is not None and origin not in _ALLOWED_WS_ORIGINS:
+        await ws.close(code=1008)
+        return
     await ws_manager.connect(ws)
     try:
         while True:
@@ -930,19 +937,17 @@ def main():
     _CHORUS_DIR.mkdir(parents=True, exist_ok=True)
     _check_playwright()
 
-    port = 4747
-
     def _open_browser():
         import time
         time.sleep(1.5)
         try:
-            webbrowser.open(f"http://localhost:{port}")
+            webbrowser.open(f"http://localhost:{PORT}")
         except Exception:
             pass
 
     threading.Thread(target=_open_browser, daemon=True).start()
-    log.info("Starting Chorus on port %d", port)
-    uvicorn.run("chorus.main:app", host="127.0.0.1", port=port, log_level="info")
+    log.info("Starting Chorus on port %d", PORT)
+    uvicorn.run("chorus.main:app", host="127.0.0.1", port=PORT, log_level="info")
 
 
 if __name__ == "__main__":
