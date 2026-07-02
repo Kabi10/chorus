@@ -32,13 +32,15 @@ jobs:
           from chorus.platforms.copilot import Copilot
           from chorus.platforms.deepseek import DeepSeek
           from chorus.platforms.mistral import Mistral
+          from chorus.platforms.meta_ai import MetaAI
+          from chorus.platforms.huggingchat import HuggingChat
           print('All platform imports OK')
           "
 
       - name: Check main.py syntax
-        run: python -m py_compile main.py && echo "main.py OK"
+        run: python -m py_compile chorus/main.py && echo "main.py OK"
 
       - name: Lint with ruff (non-blocking)
         run: |
           pip install ruff
-          ruff check main.py chorus/platforms/ --select E,W --ignore E501 || true
+          ruff check chorus/main.py chorus/platforms/ --select E,W --ignore E501 || true
